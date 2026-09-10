@@ -1,4 +1,4 @@
-# StreakFlow ⚡
+# Go With Flow ⚡
 
 A personal productivity dashboard & PWA to track daily tasks, DSA streaks, and manage college/errand reminders.
 
