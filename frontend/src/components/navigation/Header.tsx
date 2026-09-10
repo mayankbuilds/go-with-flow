@@ -18,7 +18,7 @@ export default function Header({ stats }: HeaderProps) {
       <div>
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-black tracking-tight text-white uppercase font-mono flex items-center gap-2">
-            <Terminal className="w-6 h-6 text-emerald-400" /> STREAKFLOW // OS
+            <Terminal className="w-6 h-6 text-emerald-400" /> GOWITHFLOW // OS
           </h1>
           <span className="text-[11px] font-mono bg-emerald-950/60 border border-emerald-800/80 text-emerald-400 px-2.5 py-0.5 rounded-full flex items-center gap-1">
             <Zap className="w-3 h-3 fill-emerald-400" /> V2.0

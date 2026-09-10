@@ -1,4 +1,4 @@
-2"use client";
+"use client";
 
 import { Award, Flame, Shield, Sparkles, Trophy, Zap } from "lucide-react";
 import { UserStats } from "@/types";
