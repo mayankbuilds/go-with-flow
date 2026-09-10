@@ -19,16 +19,27 @@ export interface DailyFocus {
   id: number;
   title: string;
   target_date: string;
-  priority_order: number; // 1, 2, or 3
+  priority_order: number;
   is_completed: boolean;
   created_at: string;
 }
 
-export interface ScratchpadItem {
+export interface StudentRoutine {
   id: number;
-  content: string;
-  bucket: string;
-  is_archived: boolean;
-  reminder_time?: string | null;
+  title: string;
+  start_time: string;
+  end_time: string;
+  category: string;
+  is_completed_today: boolean;
+  last_completed_date?: string | null;
   created_at: string;
+}
+
+export interface UserStats {
+  id: number;
+  xp: number;
+  level: number;
+  current_streak_days: number;
+  longest_streak_days: number;
+  last_active_date?: string | null;
 }

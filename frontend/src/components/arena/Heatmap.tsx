@@ -5,10 +5,12 @@ import { HeatmapDay } from "@/types";
 
 interface HeatmapProps {
   data: HeatmapDay[];
+  onSelectDate?: (date: string, count: number) => void;
 }
 
-export default function Heatmap({ data }: HeatmapProps) {
+export default function Heatmap({ data, onSelectDate }: HeatmapProps) {
   const [mounted, setMounted] = useState(false);
+  const [hoveredDay, setHoveredDay] = useState<{ date: string; count: number } | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -39,10 +41,10 @@ export default function Heatmap({ data }: HeatmapProps) {
   }, [countMap, mounted]);
 
   const getColor = (count: number) => {
-    if (count === 0) return "bg-zinc-900 border-zinc-800/80";
-    if (count === 1) return "bg-emerald-950/80 border-emerald-800 text-emerald-300";
-    if (count <= 3) return "bg-emerald-700 border-emerald-600 text-emerald-100";
-    return "bg-emerald-500 border-emerald-400 text-black";
+    if (count === 0) return "bg-zinc-900 border-zinc-800/80 hover:border-zinc-500";
+    if (count === 1) return "bg-emerald-950 border-emerald-800 text-emerald-300 hover:brightness-125";
+    if (count <= 3) return "bg-emerald-700 border-emerald-600 text-emerald-100 hover:brightness-125";
+    return "bg-emerald-400 border-emerald-300 text-black shadow-[0_0_10px_rgba(52,211,153,0.5)]";
   };
 
   const totalSolved = useMemo(() => {
@@ -50,13 +52,21 @@ export default function Heatmap({ data }: HeatmapProps) {
   }, [data]);
 
   return (
-    <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 backdrop-blur-sm">
+    <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 backdrop-blur-sm relative">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-sm font-semibold text-zinc-200">Execution Matrix</h3>
-          <p className="text-xs text-zinc-500 mt-0.5">Last 16 weeks of coding consistency</p>
+          <p className="text-xs text-zinc-500 mt-0.5 font-mono">
+            {hoveredDay ? (
+              <span className="text-emerald-400 font-medium">
+                {hoveredDay.date}: {hoveredDay.count} problem{hoveredDay.count !== 1 ? "s" : ""} solved
+              </span>
+            ) : (
+              "Last 16 weeks of coding consistency"
+            )}
+          </p>
         </div>
-        <div className="flex items-baseline gap-1.5">
+        <div className="flex items-baseline gap-1.5 font-mono">
           <span className="text-2xl font-black text-emerald-400">{totalSolved}</span>
           <span className="text-xs text-zinc-500">solved</span>
         </div>
@@ -66,10 +76,13 @@ export default function Heatmap({ data }: HeatmapProps) {
         <div className="grid grid-flow-col grid-rows-7 gap-1.5 min-w-[500px] min-h-[120px]">
           {mounted &&
             days.map((d) => (
-              <div
+              <button
                 key={d.date}
-                title={`${d.date}: ${d.count} solved`}
-                className={`w-3.5 h-3.5 rounded-sm border transition-all hover:scale-125 cursor-pointer ${getColor(
+                type="button"
+                onMouseEnter={() => setHoveredDay(d)}
+                onMouseLeave={() => setHoveredDay(null)}
+                onClick={() => onSelectDate && onSelectDate(d.date, d.count)}
+                className={`w-3.5 h-3.5 rounded-sm border transition-all transform active:scale-95 hover:scale-125 cursor-pointer ${getColor(
                   d.count
                 )}`}
               />
@@ -77,14 +90,14 @@ export default function Heatmap({ data }: HeatmapProps) {
         </div>
       </div>
 
-      <div className="flex items-center justify-between mt-3 text-[11px] text-zinc-500">
+      <div className="flex items-center justify-between mt-3 text-[11px] text-zinc-500 font-mono">
         <span>16 weeks ago</span>
         <div className="flex items-center gap-1.5">
           <span>Less</span>
           <div className="w-2.5 h-2.5 rounded-sm bg-zinc-900 border border-zinc-800" />
           <div className="w-2.5 h-2.5 rounded-sm bg-emerald-950 border border-emerald-800" />
           <div className="w-2.5 h-2.5 rounded-sm bg-emerald-700" />
-          <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
+          <div className="w-2.5 h-2.5 rounded-sm bg-emerald-400" />
           <span>More</span>
         </div>
         <span>Today</span>
