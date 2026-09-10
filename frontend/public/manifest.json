@@ -1,6 +1,6 @@
 {
-  "name": "StreakFlow Dashboard",
-  "short_name": "StreakFlow",
+  "name": "GowithFlow Developer OS",
+  "short_name": "GowithFlow",
   "description": "Daily task manager, DSA streak tracker, and life dashboard",
   "start_url": "/",
   "display": "standalone",

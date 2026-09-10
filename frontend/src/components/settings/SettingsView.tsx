@@ -1,14 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  HardDrive,
-  Cloud,
-  RefreshCw,
-  Check,
-  AlertCircle,
-  LogIn,
-} from "lucide-react";
+import { HardDrive, Cloud, RefreshCw, Check, LogIn } from "lucide-react";
 import { driveSync } from "@/lib/driveSync";
 import { api } from "@/lib/api";
 
@@ -18,10 +11,9 @@ export default function SettingsView() {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    // Initialize Google OAuth Token Client on component mount
     const checkGoogle = setInterval(() => {
       if (typeof window !== "undefined" && window.google) {
-        driveSync.initTokenClient((token) => {
+        driveSync.initTokenClient(() => {
           setIsSignedIn(true);
           setStatusMsg("Authenticated with Google Drive.");
         });
@@ -54,12 +46,10 @@ export default function SettingsView() {
       };
 
       await driveSync.uploadSnapshot(payload);
-      setStatusMsg(
-        "Successfully synced snapshot to Google Drive appDataFolder.",
-      );
-    } catch (err: any) {
-      console.error(err);
-      setStatusMsg(`Sync failed: ${err.message || "Unknown error"}`);
+      setStatusMsg("Successfully synced snapshot to Google Drive appDataFolder.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setStatusMsg(`Sync failed: ${message}`);
     } finally {
       setSyncing(false);
     }
@@ -74,14 +64,10 @@ export default function SettingsView() {
         setStatusMsg("No existing backup found in Google Drive.");
         return;
       }
-
-      console.log("Restored snapshot data:", snapshot);
-      setStatusMsg(
-        "Data restored from Drive. Please refresh page to reload state.",
-      );
-    } catch (err: any) {
-      console.error(err);
-      setStatusMsg(`Restore failed: ${err.message || "Unknown error"}`);
+      setStatusMsg("Data restored from Drive. Please refresh page to reload state.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setStatusMsg(`Restore failed: ${message}`);
     } finally {
       setSyncing(false);
     }
@@ -89,7 +75,6 @@ export default function SettingsView() {
 
   return (
     <div className="space-y-6">
-      {/* Cashew Style Drive Vault */}
       <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6">
         <div className="flex items-start gap-4">
           <div className="p-3 bg-emerald-950/50 border border-emerald-800 text-emerald-400 rounded-xl">
@@ -100,17 +85,13 @@ export default function SettingsView() {
               GowithFlow Private Storage
             </h3>
             <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-              Your daily execution targets, coding records, and streaks are
-              stored locally. Connect your Google Drive to sync snapshots
-              directly to your personal cloud (
-              <code className="text-zinc-300 font-mono">appDataFolder</code>)
-              with zero external servers.
+              Your daily execution targets, coding records, and streaks are stored locally.
+              Connect your Google Drive to sync snapshots directly to your personal cloud (<code className="text-zinc-300 font-mono">appDataFolder</code>) with zero external servers.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Cloud Sync Actions */}
       <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-400 flex items-center gap-2">
@@ -141,9 +122,7 @@ export default function SettingsView() {
               disabled={syncing}
               className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-black text-xs font-mono font-bold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2"
             >
-              <RefreshCw
-                className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}
-              />
+              <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
               Backup Now to Drive
             </button>
 
