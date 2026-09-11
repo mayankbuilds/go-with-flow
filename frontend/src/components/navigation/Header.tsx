@@ -1,31 +1,44 @@
 "use client";
 
-import { Terminal, Flame, Zap } from "lucide-react";
+import { Terminal, Flame, Timer } from "lucide-react";
 import { UserStats } from "@/types";
 
 interface HeaderProps {
   stats: UserStats | null;
+  onOpenPomodoro?: () => void;
+  timerInfo?: {
+    timeLeft: number;
+    isRunning: boolean;
+    mode: string;
+  };
 }
 
-export default function Header({ stats }: HeaderProps) {
+export default function Header({
+  stats,
+  onOpenPomodoro,
+  timerInfo,
+}: HeaderProps) {
   const xp = stats?.xp ?? 100;
   const level = stats?.level ?? 1;
   const streakDays = stats?.current_streak_days ?? 1;
   const progressInLevel = Math.round(((xp % 300) / 300) * 100);
 
+  const formatTimer = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
+
   return (
     <header className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 mb-8 border-b border-zinc-800 gap-4">
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-black tracking-tight text-white uppercase font-mono flex items-center gap-2">
-            <Terminal className="w-6 h-6 text-emerald-400" /> GOWITHFLOW // OS
+          <h1 className="text-2xl font-black tracking-wider text-white uppercase font-mono flex items-center gap-2.5">
+            <Terminal className="w-6 h-6 text-emerald-400" /> GO WITH FLOW
           </h1>
-          <span className="text-[11px] font-mono bg-emerald-950/60 border border-emerald-800/80 text-emerald-400 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-            <Zap className="w-3 h-3 fill-emerald-400" /> V2.0
-          </span>
         </div>
         <p className="text-xs text-zinc-400 mt-1 font-mono">
-          Student Routine Architect • Execution Arena • Rule-of-3 Engine
+          Daily Routines • Coding Arena • Deep Focus
         </p>
       </div>
 
@@ -52,6 +65,33 @@ export default function Header({ stats }: HeaderProps) {
           <Flame className="w-4 h-4 fill-orange-500 text-orange-500 animate-bounce" />
           <span className="font-bold">{streakDays} Days Active</span>
         </div>
+
+        {onOpenPomodoro && (
+          <button
+            onClick={onOpenPomodoro}
+            className={`flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-xl border transition cursor-pointer ${
+              timerInfo?.isRunning
+                ? "bg-emerald-950/80 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.3)]"
+                : "bg-emerald-950/40 hover:bg-emerald-950/70 border-emerald-800/60 hover:border-emerald-700 text-emerald-400"
+            }`}
+            title="Open Fullscreen Pomodoro Focus (F)"
+          >
+            {timerInfo?.isRunning ? (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            ) : (
+              <Timer className="w-3.5 h-3.5" />
+            )}
+            <span className="font-bold">
+              {timerInfo
+                ? timerInfo.isRunning
+                  ? `${formatTimer(timerInfo.timeLeft)}`
+                  : timerInfo.timeLeft < 1500
+                    ? `${formatTimer(timerInfo.timeLeft)} (Paused)`
+                    : "Focus Timer"
+                : "Focus Timer"}
+            </span>
+          </button>
+        )}
       </div>
     </header>
   );

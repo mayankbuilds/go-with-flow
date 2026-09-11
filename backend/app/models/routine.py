@@ -12,6 +12,9 @@ class StudentRoutine(Base):
     start_time: Mapped[str] = mapped_column(String(10), nullable=False)  # HH:MM format
     end_time: Mapped[str] = mapped_column(String(10), nullable=False)
     category: Mapped[str] = mapped_column(String(50), default="Coding")
+    scheduled_date: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # YYYY-MM-DD for one-off events
     is_completed_today: Mapped[bool] = mapped_column(Boolean, default=False)
     last_completed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

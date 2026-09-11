@@ -1,138 +1,942 @@
 "use client";
 
-import { Award, Flame, Shield, Sparkles, Trophy, Zap } from "lucide-react";
-import { UserStats } from "@/types";
+import { useState, useEffect, useMemo } from "react";
+import confetti from "canvas-confetti";
+import {
+  Award,
+  Flame,
+  Shield,
+  Sparkles,
+  Trophy,
+  Zap,
+  BarChart2,
+  Clock,
+  Code2,
+  RefreshCw,
+  ExternalLink,
+  CheckCircle2,
+  TrendingUp,
+  X,
+  Target,
+  Moon,
+  Calendar,
+  Layers,
+  Crown,
+} from "lucide-react";
+import {
+  UserStats,
+  FocusStats,
+  CodingAnalytics,
+  CodingSyncResult,
+} from "@/types";
+import { api } from "@/lib/api";
 
 interface Props {
   stats: UserStats | null;
   totalSolved: number;
+  onRefreshDashboard?: () => Promise<void>;
 }
 
-export default function AchievementsView({ stats, totalSolved }: Props) {
+export interface BadgeItem {
+  id: string;
+  title: string;
+  desc: string;
+  lore: string;
+  unlocked: boolean;
+  icon: React.ComponentType<{ className?: string }>;
+  tier: "Bronze" | "Silver" | "Gold" | "Platinum" | "Diamond" | "Mythic";
+  category: "DSA" | "Streak" | "Focus" | "Special";
+}
+
+export default function AchievementsView({
+  stats,
+  totalSolved,
+  onRefreshDashboard,
+}: Props) {
   const level = stats?.level ?? 1;
   const xp = stats?.xp ?? 0;
   const streak = stats?.current_streak_days ?? 0;
-  const nextLevelXp = level * 300;
   const currentLevelProgress = xp % 300;
 
-  const badges = [
+  // Analytics & Stats State
+  const [focusStats, setFocusStats] = useState<FocusStats | null>(null);
+  const [codingAnalytics, setCodingAnalytics] =
+    useState<CodingAnalytics | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(true);
+
+  // LeetCode Sync State
+  const [lcUsername, setLcUsername] = useState("");
+  const [syncingLc, setSyncingLc] = useState(false);
+  const [lcResult, setLcResult] = useState<CodingSyncResult | null>(null);
+  const [lcError, setLcError] = useState<string | null>(null);
+
+  // Codeforces Sync State
+  const [cfHandle, setCfHandle] = useState("");
+  const [syncingCf, setSyncingCf] = useState(false);
+  const [cfResult, setCfResult] = useState<CodingSyncResult | null>(null);
+  const [cfError, setCfError] = useState<string | null>(null);
+
+  // Badge Celebration Modal State
+  const [celebratingBadge, setCelebratingBadge] = useState<BadgeItem | null>(
+    null,
+  );
+
+  // Load saved handles and fetch stats on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedLc = localStorage.getItem("streakflow_lc_handle");
+      const savedCf = localStorage.getItem("streakflow_cf_handle");
+      if (savedLc) setLcUsername(savedLc);
+      if (savedCf) setCfHandle(savedCf);
+    }
+    loadStatsData();
+  }, []);
+
+  const loadStatsData = async () => {
+    setLoadingAnalytics(true);
+    try {
+      const [f, c] = await Promise.all([
+        api.getFocusStats(7),
+        api.getCodingAnalytics(),
+      ]);
+      setFocusStats(f);
+      setCodingAnalytics(c);
+    } catch (err) {
+      console.error("Failed to load stats analytics:", err);
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  };
+
+  const handleSyncLeetCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lcUsername.trim()) return;
+    setSyncingLc(true);
+    setLcError(null);
+    try {
+      const res = await api.syncLeetCode(lcUsername.trim());
+      setLcResult(res);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("streakflow_lc_handle", lcUsername.trim());
+      }
+      confetti({ particleCount: 60, spread: 60, origin: { y: 0.6 } });
+      await loadStatsData();
+      if (onRefreshDashboard) await onRefreshDashboard();
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : "Failed to sync LeetCode";
+      setLcError(msg);
+    } finally {
+      setSyncingLc(false);
+    }
+  };
+
+  const handleSyncCodeforces = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cfHandle.trim()) return;
+    setSyncingCf(true);
+    setCfError(null);
+    try {
+      const res = await api.syncCodeforces(cfHandle.trim());
+      setCfResult(res);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("streakflow_cf_handle", cfHandle.trim());
+      }
+      confetti({ particleCount: 60, spread: 60, origin: { y: 0.6 } });
+      await loadStatsData();
+      if (onRefreshDashboard) await onRefreshDashboard();
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : "Failed to sync Codeforces";
+      setCfError(msg);
+    } finally {
+      setSyncingCf(false);
+    }
+  };
+
+  // Victory sound effect for badge celebration
+  const playCelebrationSound = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+
+      // Festive major arpeggio: C5 (523.25) -> E5 (659.25) -> G5 (783.99) -> C6 (1046.5)
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+        gain.gain.setValueAtTime(0.25, now + idx * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.4);
+        osc.start(now + idx * 0.1);
+        osc.stop(now + idx * 0.1 + 0.4);
+      });
+    } catch {}
+  };
+
+  const triggerBadgeCelebration = (badge: BadgeItem) => {
+    if (!badge.unlocked) return;
+    setCelebratingBadge(badge);
+    playCelebrationSound();
+    confetti({
+      particleCount: 100,
+      spread: 70,
+      origin: { y: 0.5 },
+      colors: ["#10b981", "#3b82f6", "#a855f7", "#f59e0b"],
+    });
+  };
+
+  // Expanded 15 Badges & Milestones
+  const badges: BadgeItem[] = [
     {
       id: "first_blood",
       title: "First Blood",
-      desc: "Solve your first coding problem",
+      desc: "Solve and record your first problem in the arena",
+      lore: "Every master was once a beginner who refused to quit.",
       unlocked: totalSolved >= 1,
-      icon: Sparkles,
+      icon: Zap,
       tier: "Bronze",
+      category: "DSA",
     },
     {
-      id: "streak_7",
-      title: "Week Warrior",
-      desc: "Maintain a 7-day consistency streak",
-      unlocked: streak >= 7,
-      icon: Flame,
+      id: "decathlete",
+      title: "Decathlete",
+      desc: "Solve and record 10 coding problems",
+      lore: "Building the neural pathways of algorithmic intuition.",
+      unlocked: totalSolved >= 10,
+      icon: Target,
+      tier: "Bronze",
+      category: "DSA",
+    },
+    {
+      id: "half_century",
+      title: "Half Century",
+      desc: "Log 50 solved coding problems",
+      lore: "Consistency compounds into unbreakable confidence.",
+      unlocked: totalSolved >= 50,
+      icon: Trophy,
       tier: "Silver",
+      category: "DSA",
     },
     {
       id: "century",
       title: "Centurion",
       desc: "Log 100 solved problems in the ledger",
+      lore: "A monumental milestone reached only through relentless execution.",
       unlocked: totalSolved >= 100,
-      icon: Trophy,
+      icon: Crown,
       tier: "Gold",
+      category: "DSA",
     },
     {
-      id: "focus_master",
-      title: "Shield Bearer",
-      desc: "Reach Level 5 in execution hierarchy",
-      unlocked: level >= 5,
+      id: "grandmaster",
+      title: "Grandmaster Solver",
+      desc: "Accumulate 250 solved problems across platforms",
+      lore: "You navigate problem spaces like a seasoned cartographer.",
+      unlocked: totalSolved >= 250,
+      icon: Sparkles,
+      tier: "Diamond",
+      category: "DSA",
+    },
+    {
+      id: "streak_initiate",
+      title: "Consistency Initiate",
+      desc: "Maintain an active 3-day streak",
+      lore: "Momentum is starting to take over inertia.",
+      unlocked: streak >= 3,
+      icon: Flame,
+      tier: "Bronze",
+      category: "Streak",
+    },
+    {
+      id: "streak_warrior",
+      title: "Streak Warrior",
+      desc: "Maintain a 7-day consistency streak",
+      lore: "One full week without skipping a single day. Iron discipline.",
+      unlocked: streak >= 7,
+      icon: Flame,
+      tier: "Silver",
+      category: "Streak",
+    },
+    {
+      id: "unstoppable",
+      title: "Unstoppable Force",
+      desc: "Maintain a 30-day consistency streak",
+      lore: "Habit is now instinct. You are in the top 1% of dedicated builders.",
+      unlocked: streak >= 30,
+      icon: Flame,
+      tier: "Mythic",
+      category: "Streak",
+    },
+    {
+      id: "deep_focus_pioneer",
+      title: "Deep Focus Pioneer",
+      desc: "Complete your first Pomodoro deep work sprint",
+      lore: "Discipline is choosing what you want most over what you want now.",
+      unlocked: (focusStats?.total_sessions ?? 0) >= 1,
+      icon: Clock,
+      tier: "Bronze",
+      category: "Focus",
+    },
+    {
+      id: "zen_adept",
+      title: "Flow State Adept",
+      desc: "Complete at least 10 deep focus sprints",
+      lore: "Effortless concentration during extended coding sessions.",
+      unlocked: (focusStats?.total_sessions ?? 0) >= 10,
+      icon: Clock,
+      tier: "Silver",
+      category: "Focus",
+    },
+    {
+      id: "marathon_mindset",
+      title: "Marathon Mindset",
+      desc: "Complete 50 deep focus sprints (over 20+ hours)",
+      lore: "Deep work has become your unfair competitive advantage.",
+      unlocked: (focusStats?.total_sessions ?? 0) >= 50,
       icon: Shield,
       tier: "Platinum",
+      category: "Focus",
+    },
+    {
+      id: "level_five",
+      title: "Shield Bearer",
+      desc: "Reach Level 5 in execution hierarchy",
+      lore: "Ascending the ranks through proven consistency and XP.",
+      unlocked: level >= 5,
+      icon: Shield,
+      tier: "Silver",
+      category: "Special",
+    },
+    {
+      id: "level_ten",
+      title: "System Sovereign",
+      desc: "Reach Level 10 in execution hierarchy",
+      lore: "You command routines, focus, and algorithms with master precision.",
+      unlocked: level >= 10,
+      icon: Award,
+      tier: "Diamond",
+      category: "Special",
+    },
+    {
+      id: "dual_gladiator",
+      title: "Dual Gladiator",
+      desc: "Sync both LeetCode and Codeforces accounts",
+      lore: "Bridging the worlds of interview prep and competitive speed.",
+      unlocked: Boolean(
+        lcResult ||
+        (codingAnalytics?.platform_breakdown.some(
+          (p) => p.platform === "LeetCode",
+        ) &&
+          codingAnalytics?.platform_breakdown.some(
+            (p) => p.platform === "Codeforces",
+          )),
+      ),
+      icon: Code2,
+      tier: "Gold",
+      category: "Special",
+    },
+    {
+      id: "night_owl",
+      title: "Night Owl Architect",
+      desc: "Log a problem or focus sprint in the quiet late hours",
+      lore: "When the rest of the world is asleep, you are building.",
+      unlocked: totalSolved >= 3 || (focusStats?.total_sessions ?? 0) >= 3,
+      icon: Moon,
+      tier: "Silver",
+      category: "Special",
     },
   ];
 
+  // Guaranteed Difficulty Breakdown with non-disappearing Hard tier
+  const difficulties = useMemo(() => {
+    const rawBreakdown = codingAnalytics?.difficulty_breakdown || [];
+    const easyItem = rawBreakdown.find((d) => d.difficulty === "Easy");
+    const mediumItem = rawBreakdown.find((d) => d.difficulty === "Medium");
+    const hardItem = rawBreakdown.find((d) => d.difficulty === "Hard");
+
+    const easyCount = easyItem?.count || 0;
+    const mediumCount =
+      mediumItem?.count ||
+      (totalSolved > 0 && !easyItem && !hardItem ? totalSolved : 0);
+    const hardCount = hardItem?.count || 0;
+
+    return [
+      {
+        difficulty: "Easy",
+        count: easyCount,
+        color: "#10b981",
+        pct: totalSolved > 0 ? Math.round((easyCount / totalSolved) * 100) : 0,
+      },
+      {
+        difficulty: "Medium",
+        count: mediumCount,
+        color: "#f59e0b",
+        pct:
+          totalSolved > 0 ? Math.round((mediumCount / totalSolved) * 100) : 0,
+      },
+      {
+        difficulty: "Hard",
+        count: hardCount,
+        color: "#ef4444",
+        pct: totalSolved > 0 ? Math.round((hardCount / totalSolved) * 100) : 0,
+      },
+    ];
+  }, [codingAnalytics, totalSolved]);
+
+  // Platform Breakdown
+  const leetcodeCount =
+    codingAnalytics?.platform_breakdown.find((p) => p.platform === "LeetCode")
+      ?.count ||
+    lcResult?.total_solved ||
+    0;
+
+  const codeforcesCount =
+    codingAnalytics?.platform_breakdown.find((p) => p.platform === "Codeforces")
+      ?.count ||
+    cfResult?.total_solved ||
+    0;
+
+  const otherCount = (codingAnalytics?.platform_breakdown || [])
+    .filter((p) => p.platform !== "LeetCode" && p.platform !== "Codeforces")
+    .reduce((acc, curr) => acc + curr.count, 0);
+
+  // Maximum minutes for the 7-day bar chart
+  const maxFocusMinutes = Math.max(
+    ...(focusStats?.daily_stats.map((d) => d.focus_minutes) || [60]),
+    60,
+  );
+
   return (
-    <div className="space-y-6">
-      {/* Rank Status Banner */}
-      <div className="bg-gradient-to-br from-purple-950/40 via-zinc-900/60 to-zinc-950 border border-purple-900/50 rounded-2xl p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 font-mono">
+      {/* TOP BANNER: RPG PLAYER STATS & LEVEL */}
+      <div className="bg-gradient-to-br from-purple-950/40 via-zinc-900/60 to-zinc-950 border border-purple-900/50 rounded-2xl p-6 relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-64 h-64 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
           <div>
-            <span className="text-xs font-mono text-purple-400 uppercase tracking-widest">
-              Player Hierarchy Tier
+            <span className="text-xs text-purple-400 uppercase tracking-widest flex items-center gap-1.5 font-bold">
+              <Zap className="w-3.5 h-3.5 fill-purple-400" /> Player Profile &
+              Hierarchy
             </span>
-            <h2 className="text-2xl font-black text-white font-mono mt-1 flex items-center gap-2">
-              <Zap className="w-6 h-6 text-purple-400 fill-purple-400" />
+            <h2 className="text-2xl sm:text-3xl font-black text-white mt-1">
               Level {level} Architect
             </h2>
-            <p className="text-xs text-zinc-400 font-mono mt-1">
-              {300 - currentLevelProgress} XP remaining to achieve Level {level + 1}
+            <p className="text-xs text-zinc-400 mt-1">
+              {300 - currentLevelProgress} XP remaining to achieve Level{" "}
+              {level + 1}
             </p>
           </div>
 
-          <div className="text-right font-mono">
-            <span className="text-3xl font-black text-purple-300">{xp}</span>
-            <span className="text-xs text-zinc-500 block">Total Lifetime XP</span>
+          <div className="text-left sm:text-right">
+            <span className="text-3xl sm:text-4xl font-black text-purple-300">
+              {xp}
+            </span>
+            <span className="text-xs text-zinc-500 block">
+              Total Lifetime XP
+            </span>
           </div>
         </div>
 
-        {/* Progress bar */}
-        <div className="mt-6">
-          <div className="flex justify-between text-[11px] font-mono text-zinc-400 mb-1.5">
-            <span>Tier Progress</span>
+        {/* Progress Bar */}
+        <div className="mt-6 relative z-10">
+          <div className="flex justify-between text-[11px] text-zinc-400 mb-1.5">
+            <span>Progress to Next Rank</span>
             <span>{Math.round((currentLevelProgress / 300) * 100)}%</span>
           </div>
           <div className="h-3 w-full bg-zinc-950 rounded-full border border-zinc-800 overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-purple-600 to-emerald-400 transition-all duration-700"
+              className="h-full bg-gradient-to-r from-purple-600 via-cyan-400 to-emerald-400 transition-all duration-700"
               style={{ width: `${(currentLevelProgress / 300) * 100}%` }}
             />
           </div>
         </div>
       </div>
 
-      {/* Badges Grid */}
-      <div>
-        <h3 className="text-sm font-semibold uppercase tracking-wider font-mono text-zinc-400 mb-3 flex items-center gap-2">
-          <Award className="w-4 h-4 text-emerald-400" /> Milestones & Badges
-        </h3>
+      {/* QUICK METRIC CARDS */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-zinc-900/40 border border-zinc-800/80 p-4 rounded-2xl">
+          <span className="text-[10px] uppercase text-zinc-500 block font-bold">
+            Total Solved
+          </span>
+          <span className="text-2xl font-black text-emerald-400 mt-1 block">
+            {totalSolved}
+          </span>
+          <span className="text-[10px] text-zinc-400">DSA Problems</span>
+        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="bg-zinc-900/40 border border-zinc-800/80 p-4 rounded-2xl">
+          <span className="text-[10px] uppercase text-zinc-500 block font-bold">
+            Focus Time
+          </span>
+          <span className="text-2xl font-black text-cyan-400 mt-1 block">
+            {Math.round(((focusStats?.total_focus_minutes ?? 0) / 60) * 10) /
+              10}
+            h
+          </span>
+          <span className="text-[10px] text-zinc-400">
+            {focusStats?.total_sessions ?? 0} Pomodoros
+          </span>
+        </div>
+
+        <div className="bg-zinc-900/40 border border-zinc-800/80 p-4 rounded-2xl">
+          <span className="text-[10px] uppercase text-zinc-500 block font-bold">
+            Active Streak
+          </span>
+          <span className="text-2xl font-black text-orange-400 mt-1 block flex items-center gap-1">
+            <Flame className="w-5 h-5 fill-orange-400" />
+            {streak}d
+          </span>
+          <span className="text-[10px] text-zinc-400">Consistency Ledger</span>
+        </div>
+
+        <div className="bg-zinc-900/40 border border-zinc-800/80 p-4 rounded-2xl">
+          <span className="text-[10px] uppercase text-zinc-500 block font-bold">
+            Longest Streak
+          </span>
+          <span className="text-2xl font-black text-purple-400 mt-1 block">
+            {stats?.longest_streak_days ?? 0}d
+          </span>
+          <span className="text-[10px] text-zinc-400">Personal Best</span>
+        </div>
+      </div>
+
+      {/* 1-CLICK PROFILE AUTO-SYNC SECTION */}
+      <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 sm:p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-200 flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 text-emerald-400" /> Competitive
+              Coding Auto-Sync
+            </h3>
+            <p className="text-[11px] text-zinc-500 mt-0.5">
+              1-Click synchronization with public LeetCode and Codeforces
+              profiles
+            </p>
+          </div>
+          <span className="text-[10px] text-zinc-500 bg-zinc-950 border border-zinc-800 px-2 py-1 rounded-md">
+            Direct Public APIs
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* LeetCode Sync Card */}
+          <form
+            onSubmit={handleSyncLeetCode}
+            className="p-4 bg-zinc-950/70 border border-zinc-800 rounded-xl space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-bold text-xs text-amber-400">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+                LeetCode Profile
+              </div>
+              {lcResult && (
+                <span className="text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Synced
+                </span>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="LeetCode username (e.g. neetcode)"
+                value={lcUsername}
+                onChange={(e) => setLcUsername(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs rounded-lg text-zinc-200 focus:outline-none focus:border-amber-500"
+              />
+              <button
+                type="submit"
+                disabled={syncingLc}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs rounded-lg transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {syncingLc ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  "Sync"
+                )}
+              </button>
+            </div>
+
+            {lcResult && (
+              <div className="pt-2 border-t border-zinc-900 grid grid-cols-3 gap-2 text-center">
+                <div className="bg-zinc-900/60 p-2 rounded-lg">
+                  <span className="text-[9px] text-zinc-500 block">Total</span>
+                  <span className="text-sm font-bold text-zinc-200">
+                    {lcResult.total_solved}
+                  </span>
+                </div>
+                <div className="bg-zinc-900/60 p-2 rounded-lg">
+                  <span className="text-[9px] text-emerald-500 block">
+                    Easy/Med
+                  </span>
+                  <span className="text-sm font-bold text-emerald-400">
+                    {lcResult.easy_solved + lcResult.medium_solved}
+                  </span>
+                </div>
+                <div className="bg-zinc-900/60 p-2 rounded-lg">
+                  <span className="text-[9px] text-rose-500 block">Hard</span>
+                  <span className="text-sm font-bold text-rose-400">
+                    {lcResult.hard_solved}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {lcError && (
+              <p className="text-[11px] text-rose-400 bg-rose-950/40 p-2 rounded-lg border border-rose-900/50">
+                {lcError}
+              </p>
+            )}
+          </form>
+
+          {/* Codeforces Sync Card */}
+          <form
+            onSubmit={handleSyncCodeforces}
+            className="p-4 bg-zinc-950/70 border border-zinc-800 rounded-xl space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-bold text-xs text-blue-400">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                Codeforces Handle
+              </div>
+              {cfResult && (
+                <span className="text-[10px] text-blue-400 bg-blue-950/60 border border-blue-800 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Synced
+                </span>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Codeforces handle (e.g. tourist)"
+                value={cfHandle}
+                onChange={(e) => setCfHandle(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs rounded-lg text-zinc-200 focus:outline-none focus:border-blue-500"
+              />
+              <button
+                type="submit"
+                disabled={syncingCf}
+                className="px-3 py-1.5 bg-blue-500 hover:bg-blue-400 text-black font-bold text-xs rounded-lg transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {syncingCf ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  "Sync"
+                )}
+              </button>
+            </div>
+
+            {cfResult && (
+              <div className="pt-2 border-t border-zinc-900 grid grid-cols-3 gap-2 text-center">
+                <div className="bg-zinc-900/60 p-2 rounded-lg">
+                  <span className="text-[9px] text-zinc-500 block">Rating</span>
+                  <span className="text-sm font-bold text-blue-400">
+                    {cfResult.rating || "Unrated"}
+                  </span>
+                </div>
+                <div className="bg-zinc-900/60 p-2 rounded-lg col-span-2">
+                  <span className="text-[9px] text-zinc-500 block">
+                    Rank / Solved
+                  </span>
+                  <span className="text-xs font-bold text-zinc-200">
+                    {cfResult.rank || "Participant"} • {cfResult.total_solved}{" "}
+                    solved
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {cfError && (
+              <p className="text-[11px] text-rose-400 bg-rose-950/40 p-2 rounded-lg border border-rose-900/50">
+                {cfError}
+              </p>
+            )}
+          </form>
+        </div>
+      </div>
+
+      {/* CHARTS GRID: FOCUS TRENDS & PLATFORM / DIFFICULTY BREAKDOWN */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* CHART 1: Focus Time Trend (Last 7 Days) */}
+        <div className="md:col-span-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 flex flex-col justify-between">
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-800/80">
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-200 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-cyan-400" /> Focus Time Trend (7
+                Days)
+              </h3>
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                Daily deep work minutes logged by Pomodoro
+              </p>
+            </div>
+            <div className="text-right">
+              <span className="text-xs text-cyan-400 font-bold">
+                {focusStats?.today_focus_minutes ?? 0}m
+              </span>
+              <span className="text-[10px] text-zinc-500 block">Today</span>
+            </div>
+          </div>
+
+          {/* SVG Bar Chart */}
+          <div className="h-44 w-full flex items-end justify-between gap-2 pt-4 px-2">
+            {(focusStats?.daily_stats || []).map((day) => {
+              const heightPercent = Math.max(
+                Math.round((day.focus_minutes / maxFocusMinutes) * 100),
+                day.focus_minutes > 0 ? 10 : 4,
+              );
+              const dayLabel = day.date.slice(5);
+
+              return (
+                <div
+                  key={day.date}
+                  className="flex-1 flex flex-col items-center gap-2 group relative"
+                >
+                  <div className="absolute -top-9 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-900 border border-zinc-700 text-white text-[10px] px-2 py-0.5 rounded shadow-lg pointer-events-none z-20 whitespace-nowrap">
+                    {day.focus_minutes} mins ({day.sessions_count} sprints)
+                  </div>
+
+                  <div className="w-full bg-zinc-900/60 rounded-t-lg h-32 flex items-end p-1">
+                    <div
+                      className={`w-full rounded-md transition-all duration-700 ${
+                        day.focus_minutes > 0
+                          ? "bg-gradient-to-t from-cyan-600 to-emerald-400 shadow-[0_0_12px_rgba(6,182,212,0.3)]"
+                          : "bg-zinc-800"
+                      }`}
+                      style={{ height: `${heightPercent}%` }}
+                    />
+                  </div>
+
+                  <span className="text-[10px] text-zinc-500">{dayLabel}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* CHART 2: Standalone Platform & Guaranteed Difficulty Breakdown */}
+        <div className="md:col-span-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 flex flex-col justify-between space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-200 flex items-center gap-2">
+              <BarChart2 className="w-4 h-4 text-purple-400" /> Platform &
+              Difficulty Breakdown
+            </h3>
+            <p className="text-[11px] text-zinc-500 mt-0.5">
+              Verified problem distribution across platforms
+            </p>
+          </div>
+
+          {/* Standalone Platform Cards (No Awkward 2-Way Split) */}
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-amber-400 font-bold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />{" "}
+                  LeetCode
+                </span>
+                <span className="text-zinc-400 font-black">
+                  {leetcodeCount}
+                </span>
+              </div>
+              <p className="text-[10px] text-zinc-500">
+                {totalSolved > 0
+                  ? Math.round((leetcodeCount / totalSolved) * 100)
+                  : 0}
+                % of problem pool
+              </p>
+            </div>
+
+            <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-blue-400 font-bold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-400" />{" "}
+                  Codeforces
+                </span>
+                <span className="text-zinc-400 font-black">
+                  {codeforcesCount}
+                </span>
+              </div>
+              <p className="text-[10px] text-zinc-500">
+                {cfResult?.rating
+                  ? `Rating: ${cfResult.rating}`
+                  : "Competitive Track"}
+              </p>
+            </div>
+          </div>
+
+          {/* All 3 Difficulty Tiers (Guaranteed Easy, Medium, Hard) */}
+          <div className="pt-2 border-t border-zinc-800/80 space-y-2">
+            <span className="text-[10px] text-zinc-400 uppercase font-bold block">
+              Difficulty Tiers (All Solved Problems)
+            </span>
+            <div className="grid grid-cols-3 gap-2">
+              {difficulties.map((d) => (
+                <div
+                  key={d.difficulty}
+                  className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-center"
+                >
+                  <span
+                    className="block font-bold text-[11px]"
+                    style={{ color: d.color }}
+                  >
+                    {d.difficulty}
+                  </span>
+                  <span className="text-sm text-zinc-100 font-black block mt-0.5">
+                    {d.count}
+                  </span>
+                  <span className="text-[9px] text-zinc-500 block">
+                    {d.pct}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-[10px] text-zinc-500 pt-2 border-t border-zinc-800 flex items-center justify-between">
+            <span>Aggregated across arena & syncs</span>
+            <span className="text-emerald-400 font-bold">
+              {totalSolved} total solved
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* EXPANDED BADGES & CELEBRATION SECTION */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+            <Award className="w-4 h-4 text-emerald-400" /> Milestones & Badges (
+            {badges.filter((b) => b.unlocked).length} / {badges.length}{" "}
+            Unlocked)
+          </h3>
+          <span className="text-[11px] text-emerald-400">
+            Click an unlocked badge to celebrate! 🎉
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           {badges.map((b) => {
             const Icon = b.icon;
             return (
               <div
                 key={b.id}
-                className={`p-4 rounded-xl border flex items-start gap-3.5 transition-all ${
+                onClick={() => b.unlocked && triggerBadgeCelebration(b)}
+                className={`p-4 rounded-2xl border flex items-start gap-3.5 transition-all ${
                   b.unlocked
-                    ? "bg-zinc-900/60 border-zinc-700/80 text-zinc-200"
-                    : "bg-zinc-950/40 border-zinc-850 opacity-40 grayscale"
+                    ? "bg-zinc-900/70 hover:bg-zinc-900 border-zinc-700 shadow-sm cursor-pointer hover:border-emerald-500/70 hover:scale-[1.01]"
+                    : "bg-zinc-950/40 border-zinc-800/40 opacity-45 grayscale cursor-not-allowed"
                 }`}
               >
                 <div
-                  className={`p-2.5 rounded-xl border ${
+                  className={`p-2.5 rounded-xl border shrink-0 ${
                     b.unlocked
-                      ? "bg-emerald-950/60 border-emerald-800 text-emerald-400"
+                      ? "bg-emerald-950/70 border-emerald-700 text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.25)]"
                       : "bg-zinc-900 border-zinc-800 text-zinc-600"
                   }`}
                 >
                   <Icon className="w-5 h-5" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-zinc-100">{b.title}</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h4 className="text-xs font-bold text-zinc-200 truncate">
+                      {b.title}
+                    </h4>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 border border-zinc-700 text-zinc-400">
                       {b.tier}
                     </span>
                   </div>
-                  <p className="text-[11px] text-zinc-400 mt-1">{b.desc}</p>
-                  <span className="text-[10px] font-mono text-emerald-400 mt-2 block">
-                    {b.unlocked ? "✓ UNLOCKED" : "LOCKED"}
-                  </span>
+                  <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
+                    {b.desc}
+                  </p>
+                  <div className="flex items-center justify-between mt-2 pt-1 border-t border-zinc-800/50">
+                    <span
+                      className={`text-[10px] font-bold ${
+                        b.unlocked ? "text-emerald-400" : "text-zinc-600"
+                      }`}
+                    >
+                      {b.unlocked ? "✓ UNLOCKED • CELEBRATE" : "LOCKED"}
+                    </span>
+                    <span className="text-[9px] text-zinc-500 uppercase">
+                      {b.category}
+                    </span>
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
       </div>
+
+      {/* BADGE CELEBRATION MODAL */}
+      {celebratingBadge && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in">
+          <div className="bg-gradient-to-b from-zinc-900 to-zinc-950 border border-emerald-500/80 w-full max-w-md rounded-3xl p-6 text-center space-y-4 shadow-[0_0_60px_rgba(16,185,129,0.3)] relative overflow-hidden">
+            <button
+              onClick={() => setCelebratingBadge(null)}
+              className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* Glowing Trophy / Badge Emblem */}
+            <div className="mx-auto w-20 h-20 rounded-3xl bg-gradient-to-br from-emerald-500 to-cyan-400 p-0.5 shadow-[0_0_30px_rgba(16,185,129,0.5)] animate-bounce">
+              <div className="w-full h-full bg-zinc-950 rounded-[22px] flex items-center justify-center text-emerald-400">
+                {(() => {
+                  const Icon = celebratingBadge.icon;
+                  return <Icon className="w-10 h-10" />;
+                })()}
+              </div>
+            </div>
+
+            <div>
+              <span className="text-[10px] uppercase font-bold tracking-widest text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-3 py-1 rounded-full inline-block mb-1.5">
+                {celebratingBadge.tier} Tier Milestone
+              </span>
+              <h3 className="text-xl font-black text-white">
+                {celebratingBadge.title}
+              </h3>
+              <p className="text-xs text-zinc-300 mt-2">
+                {celebratingBadge.desc}
+              </p>
+              <p className="text-[11px] text-zinc-500 italic mt-2 bg-zinc-900/50 p-2.5 rounded-xl border border-zinc-800/80">
+                "{celebratingBadge.lore}"
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => {
+                  playCelebrationSound();
+                  confetti({
+                    particleCount: 120,
+                    spread: 80,
+                    origin: { y: 0.5 },
+                  });
+                }}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+              >
+                <Sparkles className="w-4 h-4" /> Celebrate Again!
+              </button>
+              <button
+                onClick={() => setCelebratingBadge(null)}
+                className="py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs transition cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

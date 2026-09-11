@@ -13,7 +13,7 @@ export default function MobileNav({ activeTab, onTabChange }: MobileNavProps) {
   const tabs = [
     { id: "arena", label: "Arena", icon: Terminal },
     { id: "routine", label: "Routine", icon: Clock },
-    { id: "stats", label: "Stats", icon: BarChart3 },
+    { id: "stats", label: "Statistics", icon: BarChart3 },
     { id: "settings", label: "Settings", icon: Settings },
   ] as const;
 
@@ -28,7 +28,9 @@ export default function MobileNav({ activeTab, onTabChange }: MobileNavProps) {
               key={t.id}
               onClick={() => onTabChange(t.id)}
               className={`flex flex-col items-center gap-1 transition ${
-                isActive ? "text-emerald-400" : "text-zinc-500 hover:text-zinc-300"
+                isActive
+                  ? "text-emerald-400"
+                  : "text-zinc-500 hover:text-zinc-300"
               }`}
             >
               <Icon className="w-5 h-5" />

@@ -22,3 +22,34 @@ class DailyFocusResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FocusSessionCreate(BaseModel):
+    duration_seconds: int = 1500
+    session_type: str = "focus"
+    target_date: date | None = None
+    xp_earned: int = 50
+
+
+class FocusSessionResponse(BaseModel):
+    id: int
+    duration_seconds: int
+    session_type: str
+    target_date: date
+    xp_earned: int
+    completed_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FocusDayStat(BaseModel):
+    date: str
+    focus_minutes: int
+    sessions_count: int
+
+
+class FocusStatsResponse(BaseModel):
+    total_focus_minutes: int
+    today_focus_minutes: int
+    total_sessions: int
+    daily_stats: list[FocusDayStat]

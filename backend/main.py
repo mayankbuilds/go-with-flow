@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import app.models  # noqa: F401 - Register all models
 from app.database import Base, engine
-from app.routers import coding, focus, routine, stats
+from app.routers import coding, focus, routine, settings, stats
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -21,6 +22,7 @@ app.include_router(coding.router)
 app.include_router(focus.router)
 app.include_router(routine.router)
 app.include_router(stats.router)
+app.include_router(settings.router)
 
 
 @app.get("/health")

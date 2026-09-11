@@ -19,5 +19,22 @@ class DailyFocus(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("target_date", "priority_order", name="unique_daily_focus_slot"),
+        UniqueConstraint(
+            "target_date", "priority_order", name="unique_daily_focus_slot"
+        ),
+    )
+
+
+class FocusSession(Base):
+    __tablename__ = "focus_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    duration_seconds: Mapped[int] = mapped_column(Integer, default=1500)
+    session_type: Mapped[str] = mapped_column(String(50), default="focus")
+    target_date: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    xp_earned: Mapped[int] = mapped_column(Integer, default=50)
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
     )

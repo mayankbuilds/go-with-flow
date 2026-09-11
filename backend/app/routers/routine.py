@@ -4,7 +4,11 @@ from sqlalchemy import select
 from app.database import SessionDep
 from app.models.routine import StudentRoutine
 from app.models.stats import UserStats
-from app.schemas.routine import StudentRoutineCreate, StudentRoutineResponse
+from app.schemas.routine import (
+    StudentRoutineCreate,
+    StudentRoutineResponse,
+    StudentRoutineUpdate,
+)
 
 router = APIRouter(prefix="/routines", tags=["Routine"])
 
@@ -23,7 +27,9 @@ def get_routines(db: SessionDep):
     return routines
 
 
-@router.post("", response_model=StudentRoutineResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "", response_model=StudentRoutineResponse, status_code=status.HTTP_201_CREATED
+)
 def create_routine(payload: StudentRoutineCreate, db: SessionDep):
     routine = StudentRoutine(**payload.model_dump())
     db.add(routine)
@@ -50,3 +56,30 @@ def toggle_routine(routine_id: int, db: SessionDep):
     db.commit()
     db.refresh(routine)
     return routine
+
+
+@router.put("/{routine_id}", response_model=StudentRoutineResponse)
+def update_routine(routine_id: int, payload: StudentRoutineUpdate, db: SessionDep):
+    stmt = select(StudentRoutine).where(StudentRoutine.id == routine_id)
+    routine = db.scalars(stmt).first()
+    if not routine:
+        raise HTTPException(status_code=404, detail="Routine block not found")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(routine, field, value)
+
+    db.commit()
+    db.refresh(routine)
+    return routine
+
+
+@router.delete("/{routine_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_routine(routine_id: int, db: SessionDep):
+    stmt = select(StudentRoutine).where(StudentRoutine.id == routine_id)
+    routine = db.scalars(stmt).first()
+    if not routine:
+        raise HTTPException(status_code=404, detail="Routine block not found")
+
+    db.delete(routine)
+    db.commit()
+    return None
