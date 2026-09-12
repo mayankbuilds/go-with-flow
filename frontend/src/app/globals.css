@@ -31,19 +31,28 @@ body {
 }
 
 /* ==========================================================================
-   WHITE MODE / LIGHT THEME OVERRIDES (High contrast, soft slate, distinct cards)
+   WHITE MODE / LIGHT THEME OVERRIDES (Soothing slate, distinct depth, crisp buttons)
    ========================================================================== */
 html.light {
-  --background: #f1f5f9;
+  --background: #f8fafc;
   --foreground: #0f172a;
 }
 
 html.light body {
-  background-color: #f1f5f9 !important;
+  background-color: #f8fafc !important;
   color: #0f172a !important;
 }
 
-/* Primary surface cards (Crisp white with soft border & subtle elevation) */
+/* Eliminate fuzzy blur artifacts in light mode */
+html.light .backdrop-blur-md,
+html.light .backdrop-blur-sm,
+html.light .backdrop-blur-lg,
+html.light .backdrop-blur {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Primary surface cards (Clean white with clear border & subtle shadow) */
 html.light .bg-black,
 html.light .bg-zinc-950 {
   background-color: #ffffff !important;
@@ -52,44 +61,79 @@ html.light .bg-zinc-950 {
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
 }
 
-/* Secondary surface containers & rows */
+/* Secondary surface containers & rows (Light slate depth so sections don't blend) */
 html.light .bg-zinc-900\/30,
 html.light .bg-zinc-900\/40,
 html.light .bg-zinc-900\/50,
 html.light .bg-zinc-900\/60,
 html.light .bg-zinc-900\/70,
 html.light .bg-zinc-900\/80 {
-  background-color: #ffffff !important;
+  background-color: #f8fafc !important;
   border-color: #e2e8f0 !important;
 }
 
 html.light .bg-zinc-900 {
-  background-color: #f8fafc !important;
+  background-color: #f1f5f9 !important;
   color: #0f172a !important;
-  border-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
 }
 
 /* Row & Item Hover States */
 html.light .hover\:bg-zinc-900\/70:hover,
 html.light .hover\:bg-zinc-800:hover,
 html.light .hover\:bg-zinc-900:hover {
-  background-color: #f1f5f9 !important;
+  background-color: #e2e8f0 !important;
 }
 
-/* Gray & Secondary Action Buttons (distinct from background) */
+/* Gray & Secondary Action Buttons (Distinct white/slate with solid visible border) */
+html.light button.bg-zinc-950,
+html.light button.bg-zinc-900,
+html.light button.bg-zinc-800,
 html.light .bg-zinc-800,
 html.light .bg-zinc-800\/80,
 html.light .bg-zinc-800\/60,
 html.light .bg-zinc-700 {
-  background-color: #f1f5f9 !important;
+  background-color: #ffffff !important;
   color: #1e293b !important;
   border-color: #cbd5e1 !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
 }
 
+html.light button.bg-zinc-950:hover,
+html.light button.bg-zinc-900:hover,
+html.light button.bg-zinc-800:hover,
 html.light .bg-zinc-800:hover,
 html.light .hover\:bg-zinc-700:hover,
 html.light .hover\:bg-zinc-800:hover {
-  background-color: #e2e8f0 !important;
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #94a3b8 !important;
+}
+
+/* Active tab buttons in Light Mode */
+html.light button.bg-zinc-800.text-emerald-400 {
+  background-color: #ecfdf5 !important;
+  border-color: #10b981 !important;
+  color: #047857 !important;
+}
+html.light button.bg-zinc-800.text-cyan-400 {
+  background-color: #f0f9ff !important;
+  border-color: #06b6d4 !important;
+  color: #0369a1 !important;
+}
+html.light button.bg-zinc-800.text-purple-400 {
+  background-color: #faf5ff !important;
+  border-color: #a855f7 !important;
+  color: #6b21a8 !important;
+}
+
+/* Inactive button text contrast */
+html.light button.text-zinc-400,
+html.light button.text-zinc-500 {
+  color: #475569 !important;
+}
+html.light button.text-zinc-400:hover,
+html.light button.text-zinc-500:hover {
   color: #0f172a !important;
 }
 
@@ -100,7 +144,7 @@ html.light .border-zinc-800\/90,
 html.light .border-zinc-800\/60,
 html.light .border-zinc-700,
 html.light .border-zinc-900 {
-  border-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
 }
 
 /* Typography contrast */
@@ -230,6 +274,26 @@ html.light [title="Delete Submission"]:hover {
   background-color: #fee2e2 !important;
   border-color: #fca5a5 !important;
   color: #dc2626 !important;
+}
+
+/* Modal Overlays & Floating Audio Player in Light Mode */
+html.light .fixed.inset-0.bg-black\/80 {
+  background-color: rgba(15, 23, 42, 0.45) !important;
+}
+
+html.light .fixed.bottom-20,
+html.light .fixed.bottom-24 {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* kbd shortcuts in light mode */
+html.light kbd {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #334155 !important;
 }
 
 /* Form Controls (Clean white, clear border, dark text, soft focus glow) */

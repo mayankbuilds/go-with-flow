@@ -122,6 +122,8 @@ export default function PomodoroTimer({
   const [audioStatusMsg, setAudioStatusMsg] = useState<string | null>(null);
   const [activeYtId, setActiveYtId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const ytIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const prevVolumeRef = useRef<number>(0.4);
 
   // Web Audio Context & Nodes for offline sound generator
   const synthCtxRef = useRef<AudioContext | null>(null);
@@ -254,6 +256,20 @@ export default function PomodoroTimer({
     setSoundEnabled(next);
     if (typeof window !== "undefined") {
       localStorage.setItem("streakflow_sound_enabled", String(next));
+    }
+  };
+
+  // Smart volume / mute toggler for focus audio and timer chimes
+  const handleVolumeButtonClick = () => {
+    if (musicPlaying) {
+      if (musicVolume > 0) {
+        prevVolumeRef.current = musicVolume;
+        setMusicVolume(0);
+      } else {
+        setMusicVolume(prevVolumeRef.current > 0 ? prevVolumeRef.current : 0.4);
+      }
+    } else {
+      toggleSound();
     }
   };
 
@@ -621,7 +637,7 @@ export default function PomodoroTimer({
     }
   };
 
-  // Adjust volume
+  // Adjust volume across HTML5 audio, Web Audio synths, and YouTube iframe
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = musicVolume;
@@ -636,7 +652,69 @@ export default function PomodoroTimer({
         synthCtxRef.current.currentTime,
       );
     }
+    if (ytIframeRef.current?.contentWindow) {
+      try {
+        if (musicVolume === 0) {
+          ytIframeRef.current.contentWindow.postMessage(
+            JSON.stringify({ event: "command", func: "mute", args: [] }),
+            "*",
+          );
+        } else {
+          ytIframeRef.current.contentWindow.postMessage(
+            JSON.stringify({ event: "command", func: "unMute", args: [] }),
+            "*",
+          );
+          ytIframeRef.current.contentWindow.postMessage(
+            JSON.stringify({
+              event: "command",
+              func: "setVolume",
+              args: [Math.round(musicVolume * 100)],
+            }),
+            "*",
+          );
+        }
+      } catch {}
+    }
   }, [musicVolume, activePreset.type]);
+
+  // YouTube player loop event listener (auto restarts video when it finishes)
+  useEffect(() => {
+    const handleWindowMessage = (e: MessageEvent) => {
+      try {
+        let payload = e.data;
+        if (typeof payload === "string") {
+          payload = JSON.parse(payload);
+        }
+        // State 0 is ENDED in YouTube IFrame Player API
+        if (
+          (payload?.event === "onStateChange" && payload?.info === 0) ||
+          payload?.info === 0
+        ) {
+          if (ytIframeRef.current?.contentWindow) {
+            ytIframeRef.current.contentWindow.postMessage(
+              JSON.stringify({
+                event: "command",
+                func: "seekTo",
+                args: [0, true],
+              }),
+              "*",
+            );
+            ytIframeRef.current.contentWindow.postMessage(
+              JSON.stringify({
+                event: "command",
+                func: "playVideo",
+                args: [],
+              }),
+              "*",
+            );
+          }
+        }
+      } catch {}
+    };
+
+    window.addEventListener("message", handleWindowMessage);
+    return () => window.removeEventListener("message", handleWindowMessage);
+  }, []);
 
   // Clean up synth on unmount
   useEffect(() => {
@@ -1110,11 +1188,26 @@ export default function PomodoroTimer({
 
             {/* Hidden iframe keeping YouTube audio alive in background */}
             <iframe
+              ref={ytIframeRef}
               key={activeYtId}
-              src={`https://www.youtube-nocookie.com/embed/${activeYtId}?autoplay=1&enablejsapi=1`}
+              src={`https://www.youtube-nocookie.com/embed/${activeYtId}?autoplay=1&enablejsapi=1&loop=1&playlist=${activeYtId}`}
               title="YouTube Background Audio"
               className="w-[1px] h-[1px] opacity-0 overflow-hidden pointer-events-none absolute"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              onLoad={() => {
+                if (ytIframeRef.current?.contentWindow) {
+                  try {
+                    ytIframeRef.current.contentWindow.postMessage(
+                      JSON.stringify({
+                        event: "command",
+                        func: "setVolume",
+                        args: [Math.round(musicVolume * 100)],
+                      }),
+                      "*",
+                    );
+                  } catch {}
+                }
+              }}
             />
           </div>
         )}
@@ -1198,11 +1291,31 @@ export default function PomodoroTimer({
             </button>
 
             <button
-              onClick={toggleSound}
-              className="p-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition cursor-pointer"
-              title={soundEnabled ? "Mute Sound" : "Enable Sound"}
+              onClick={handleVolumeButtonClick}
+              className={`p-2.5 rounded-xl border transition cursor-pointer ${
+                musicPlaying
+                  ? musicVolume === 0
+                    ? "bg-rose-950/60 border-rose-800 text-rose-400"
+                    : "bg-emerald-950/60 border-emerald-800 text-emerald-400"
+                  : "bg-zinc-900/80 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+              }`}
+              title={
+                musicPlaying
+                  ? musicVolume === 0
+                    ? "Unmute Focus Audio"
+                    : `Focus Audio: ${Math.round(musicVolume * 100)}% (Click to Mute)`
+                  : soundEnabled
+                    ? "Mute Timer Chimes"
+                    : "Enable Timer Chimes"
+              }
             >
-              {soundEnabled ? (
+              {musicPlaying ? (
+                musicVolume === 0 ? (
+                  <VolumeX className="w-4 h-4 text-rose-400" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-emerald-400" />
+                )
+              ) : soundEnabled ? (
                 <Volume2 className="w-4 h-4" />
               ) : (
                 <VolumeX className="w-4 h-4" />
@@ -1465,11 +1578,31 @@ export default function PomodoroTimer({
           </button>
 
           <button
-            onClick={toggleSound}
-            className="p-2 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200 transition cursor-pointer"
-            title={soundEnabled ? "Mute Sound" : "Enable Sound"}
+            onClick={handleVolumeButtonClick}
+            className={`p-2 rounded-xl border transition cursor-pointer ${
+              musicPlaying
+                ? musicVolume === 0
+                  ? "bg-rose-950/60 border-rose-800 text-rose-400"
+                  : "bg-emerald-950/60 border-emerald-800 text-emerald-400"
+                : "bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200"
+            }`}
+            title={
+              musicPlaying
+                ? musicVolume === 0
+                  ? "Unmute Focus Audio"
+                  : `Focus Audio: ${Math.round(musicVolume * 100)}% (Click to Mute)`
+                : soundEnabled
+                  ? "Mute Timer Chimes"
+                  : "Enable Timer Chimes"
+            }
           >
-            {soundEnabled ? (
+            {musicPlaying ? (
+              musicVolume === 0 ? (
+                <VolumeX className="w-3.5 h-3.5 text-rose-400" />
+              ) : (
+                <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+              )
+            ) : soundEnabled ? (
               <Volume2 className="w-3.5 h-3.5" />
             ) : (
               <VolumeX className="w-3.5 h-3.5" />
@@ -1561,31 +1694,6 @@ export default function PomodoroTimer({
         </span>
       </div>
 
-      {/* Persistent YouTube Audio Stream (active in background when menu is closed) */}
-      {activeYtId && musicPlaying && !showMusicMenu && (
-        <div className="fixed bottom-24 right-4 z-40 bg-zinc-950/95 border border-zinc-800 backdrop-blur-md rounded-2xl p-2.5 shadow-2xl flex items-center gap-2.5 animate-in fade-in">
-          <div className="w-16 h-10 rounded-lg overflow-hidden bg-black flex-shrink-0">
-            <iframe
-              src={`https://www.youtube-nocookie.com/embed/${activeYtId}?autoplay=1&enablejsapi=1`}
-              title="YouTube Audio Stream"
-              className="w-full h-full border-0"
-              allow="autoplay"
-            />
-          </div>
-          <div className="flex flex-col pr-1 font-mono text-[10px]">
-            <span className="text-emerald-400 font-bold flex items-center gap-1">
-              <Radio className="w-3 h-3 animate-pulse" /> YouTube Live
-            </span>
-            <button
-              type="button"
-              onClick={toggleMusic}
-              className="text-zinc-500 hover:text-rose-400 text-left cursor-pointer transition"
-            >
-              Stop playback
-            </button>
-          </div>
-        </div>
-      )}
 
       {renderMusicModal()}
       {renderCustomMinsModal()}

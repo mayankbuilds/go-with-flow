@@ -356,7 +356,7 @@ export default function Home() {
           </div>
 
           {/* Sub-View Switcher within Tasks & Notes */}
-          <div className="flex items-center justify-between border-b border-zinc-800 pb-3 max-w-5xl mx-auto">
+          <div className="flex items-center justify-center sm:justify-start border-b border-zinc-800 pb-3 max-w-7xl mx-auto">
             <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
               <button
                 onClick={() => setTasksSubView("all")}
@@ -392,9 +392,6 @@ export default function Home() {
                 <span>Tasks & Notes</span>
               </button>
             </div>
-            <span className="text-[11px] font-mono text-zinc-500 hidden sm:inline">
-              Rule of 3 • Scheduled Blocks • Backlog
-            </span>
           </div>
 
           {/* Content Views */}

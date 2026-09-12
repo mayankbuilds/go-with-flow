@@ -151,14 +151,63 @@ export default function AchievementsView({
       loadStatsData();
     };
 
+    const handleHandlesUpdated = (e: Event) => {
+      const custom = e as CustomEvent<{ lcHandle?: string; cfHandle?: string }>;
+      const nextLc =
+        custom.detail?.lcHandle !== undefined
+          ? custom.detail.lcHandle
+          : typeof window !== "undefined"
+            ? localStorage.getItem("streakflow_lc_handle") || ""
+            : "";
+      const nextCf =
+        custom.detail?.cfHandle !== undefined
+          ? custom.detail.cfHandle
+          : typeof window !== "undefined"
+            ? localStorage.getItem("streakflow_cf_handle") || ""
+            : "";
+
+      if (nextLc !== undefined) setLcUsername(nextLc);
+      if (nextCf !== undefined) setCfHandle(nextCf);
+
+      if (nextLc) {
+        setSyncingLc(true);
+        api
+          .syncLeetCode(nextLc)
+          .then((res) => {
+            setLcResult(res);
+            loadStatsData();
+            if (onRefreshDashboard) onRefreshDashboard();
+          })
+          .catch((err) => console.warn("LeetCode auto-sync error:", err))
+          .finally(() => setSyncingLc(false));
+      }
+      if (nextCf) {
+        setSyncingCf(true);
+        api
+          .syncCodeforces(nextCf)
+          .then((res) => {
+            setCfResult(res);
+            loadStatsData();
+            if (onRefreshDashboard) onRefreshDashboard();
+          })
+          .catch((err) => console.warn("Codeforces auto-sync error:", err))
+          .finally(() => setSyncingCf(false));
+      }
+    };
+
     window.addEventListener("focus-session-completed", handleFocusCompleted);
     window.addEventListener("streakflow-data-reset", handleDataReset);
+    window.addEventListener("streakflow-handles-updated", handleHandlesUpdated);
     return () => {
       window.removeEventListener(
         "focus-session-completed",
         handleFocusCompleted,
       );
       window.removeEventListener("streakflow-data-reset", handleDataReset);
+      window.removeEventListener(
+        "streakflow-handles-updated",
+        handleHandlesUpdated,
+      );
     };
   }, []);
 
@@ -188,6 +237,11 @@ export default function AchievementsView({
       setLcResult(res);
       if (typeof window !== "undefined") {
         localStorage.setItem("streakflow_lc_handle", lcUsername.trim());
+        window.dispatchEvent(
+          new CustomEvent("streakflow-handles-updated", {
+            detail: { lcHandle: lcUsername.trim() },
+          }),
+        );
       }
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.6 } });
       await loadStatsData();
@@ -211,6 +265,11 @@ export default function AchievementsView({
       setCfResult(res);
       if (typeof window !== "undefined") {
         localStorage.setItem("streakflow_cf_handle", cfHandle.trim());
+        window.dispatchEvent(
+          new CustomEvent("streakflow-handles-updated", {
+            detail: { cfHandle: cfHandle.trim() },
+          }),
+        );
       }
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.6 } });
       await loadStatsData();

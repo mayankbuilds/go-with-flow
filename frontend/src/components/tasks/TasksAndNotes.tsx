@@ -253,36 +253,31 @@ export default function TasksAndNotes({
   return (
     <div className="space-y-6 font-mono">
       {/* Top Header & View Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
-        <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <CheckSquare className="w-5 h-5 text-emerald-400" /> Tasks & Quick
-            Notes
-          </h2>
-          <p className="text-xs text-zinc-400 mt-1">
-            Personal backlog and markdown scratchpad • Backed up to Google Drive
-          </p>
+      <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-800">
+        <div className="flex items-center gap-2">
+          <CheckSquare className="w-4 h-4 text-emerald-400" />
+          <h3 className="text-xs uppercase tracking-wider text-zinc-300 font-bold">
+            Tasks & Notes
+          </h3>
         </div>
 
         {/* View Switcher Tabs */}
-        <div className="flex items-center gap-2 bg-zinc-950 p-1 rounded-xl border border-zinc-800 text-xs self-start sm:self-auto">
+        <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800 text-xs">
           <button
             onClick={() => setActiveTab("tasks")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition cursor-pointer text-xs ${
               activeTab === "tasks"
                 ? "bg-zinc-800 text-emerald-400 font-bold border border-zinc-700 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
             <CheckSquare className="w-3.5 h-3.5" />
-            <span>
-              Task Backlog ({tasks.filter((t) => !t.isCompleted).length})
-            </span>
+            <span>Backlog ({tasks.filter((t) => !t.isCompleted).length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab("notes")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition cursor-pointer text-xs ${
               activeTab === "notes"
                 ? "bg-zinc-800 text-cyan-400 font-bold border border-zinc-700 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"

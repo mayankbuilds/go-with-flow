@@ -272,18 +272,12 @@ export default function RoutineSection({
   return (
     <div className="space-y-4 font-mono">
       {/* SECTION HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-zinc-800">
-        <div>
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-emerald-400" />
-            <h3 className="text-xs uppercase tracking-wider text-zinc-300 font-bold">
-              Execution Timetable
-            </h3>
-          </div>
-          <p className="text-[11px] text-zinc-500 mt-0.5">
-            Synchronized blocks & scheduled events • {dailyRoutines.length}{" "}
-            daily / {upcomingEvents.length} upcoming
-          </p>
+      <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-800">
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-emerald-400" />
+          <h3 className="text-xs uppercase tracking-wider text-zinc-300 font-bold">
+            Execution Timetable
+          </h3>
         </div>
 
         {/* Action Controls */}
@@ -295,7 +289,7 @@ export default function RoutineSection({
             title="Arrange schedule by time (Toggle Sort Order)"
           >
             <ArrowUpDown className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{sortByTimeAsc ? "Arranged 00-24" : "Arranged 24-00"}</span>
+            <span>{sortByTimeAsc ? "00-24" : "24-00"}</span>
           </button>
 
           {/* Manage categories button */}
@@ -313,7 +307,7 @@ export default function RoutineSection({
             className="flex items-center gap-1 px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-lg transition cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Add</span>
+            <span>{showAdd ? "Cancel" : "Add"}</span>
           </button>
         </div>
       </div>

@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   Sun,
   Moon,
+  Loader2,
 } from "lucide-react";
 import { driveSync } from "@/lib/driveSync";
 import { api } from "@/lib/api";
@@ -99,6 +100,8 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
   const [prefLcHandle, setPrefLcHandle] = useState("");
   const [prefCfHandle, setPrefCfHandle] = useState("");
   const [handlesSaved, setHandlesSaved] = useState(false);
+  const [syncingHandles, setSyncingHandles] = useState(false);
+  const [handlesSyncResult, setHandlesSyncResult] = useState<string | null>(null);
 
   // Load preferences from localStorage on mount
   useEffect(() => {
@@ -125,6 +128,18 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
       const savedCf = localStorage.getItem("streakflow_cf_handle");
       if (savedCf) setPrefCfHandle(savedCf);
     }
+
+    const handleHandlesUpdated = (e: Event) => {
+      const custom = e as CustomEvent<{ lcHandle?: string; cfHandle?: string }>;
+      if (custom.detail) {
+        if (custom.detail.lcHandle !== undefined) setPrefLcHandle(custom.detail.lcHandle);
+        if (custom.detail.cfHandle !== undefined) setPrefCfHandle(custom.detail.cfHandle);
+      }
+    };
+    window.addEventListener("streakflow-handles-updated", handleHandlesUpdated);
+    return () => {
+      window.removeEventListener("streakflow-handles-updated", handleHandlesUpdated);
+    };
   }, []);
 
   const toggleSound = () => {
@@ -202,16 +217,53 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
     }
   };
 
-  const handleSaveHandles = (e: React.FormEvent) => {
+  const handleSaveHandles = async (e: React.FormEvent) => {
     e.preventDefault();
+    const lc = prefLcHandle.trim();
+    const cf = prefCfHandle.trim();
+
     if (typeof window !== "undefined") {
-      if (prefLcHandle.trim())
-        localStorage.setItem("streakflow_lc_handle", prefLcHandle.trim());
-      if (prefCfHandle.trim())
-        localStorage.setItem("streakflow_cf_handle", prefCfHandle.trim());
+      localStorage.setItem("streakflow_lc_handle", lc);
+      localStorage.setItem("streakflow_cf_handle", cf);
+      window.dispatchEvent(
+        new CustomEvent("streakflow-handles-updated", {
+          detail: { lcHandle: lc, cfHandle: cf },
+        }),
+      );
     }
     setHandlesSaved(true);
-    setTimeout(() => setHandlesSaved(false), 2500);
+    setTimeout(() => setHandlesSaved(false), 3000);
+
+    // Trigger immediate auto-sync if handles are provided
+    if (lc || cf) {
+      setSyncingHandles(true);
+      setHandlesSyncResult(null);
+      try {
+        const results: string[] = [];
+        if (lc) {
+          try {
+            const res = await api.syncLeetCode(lc);
+            results.push(`LeetCode: ${res.total_solved || 0} solved`);
+          } catch {
+            results.push("LeetCode: sync error");
+          }
+        }
+        if (cf) {
+          try {
+            const res = await api.syncCodeforces(cf);
+            results.push(
+              `Codeforces: ${res.total_solved || res.synced_problems_count || 0} solved`,
+            );
+          } catch {
+            results.push("Codeforces: sync error");
+          }
+        }
+        setHandlesSyncResult(`Synced: ${results.join(" • ")}`);
+        if (onResetComplete) await onResetComplete();
+      } finally {
+        setSyncingHandles(false);
+      }
+    }
   };
 
   const handleSyncToDrive = async () => {
@@ -632,11 +684,25 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
                 className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-zinc-200 text-xs outline-none focus:border-blue-500"
               />
             </div>
+            {handlesSyncResult && (
+              <p className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>{handlesSyncResult}</span>
+              </p>
+            )}
             <button
               type="submit"
-              className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-xl text-xs font-bold transition cursor-pointer"
+              disabled={syncingHandles}
+              className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              Save Default Handles
+              {syncingHandles ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Saving & Syncing Profiles...</span>
+                </>
+              ) : (
+                <span>Save & Sync Handles</span>
+              )}
             </button>
           </form>
         </div>

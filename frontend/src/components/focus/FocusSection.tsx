@@ -21,24 +21,23 @@ export default function FocusSection({
   const completedCount = tasks.filter((t) => t.is_completed).length;
 
   return (
-    <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wider font-mono text-zinc-200 flex items-center gap-2">
-            <Target className="w-4 h-4 text-orange-400" /> Rule of 3 (Today's Non-Negotiables)
-          </h2>
-          <p className="text-[11px] text-zinc-500 mt-0.5 font-mono">
-            Focus on 3 priority targets. (+20 XP each)
-          </p>
-        </div>
-        {completedCount === 3 && (
+    <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-4 sm:p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-xs font-bold uppercase tracking-wider font-mono text-zinc-300 flex items-center gap-2">
+          <Target className="w-4 h-4 text-orange-400" /> Rule of 3 • Non-Negotiables
+        </h2>
+        {completedCount === 3 ? (
           <span className="flex items-center gap-1 text-[11px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded-md">
             <Trophy className="w-3 h-3" /> Day Complete!
+          </span>
+        ) : (
+          <span className="text-[10px] font-mono text-zinc-500">
+            {completedCount}/3 Done
           </span>
         )}
       </div>
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
         {[1, 2, 3].map((slot) => (
           <DailyFocusCard
             key={slot}
