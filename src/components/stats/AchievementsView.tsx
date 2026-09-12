@@ -64,29 +64,13 @@ export default function AchievementsView({
   // LeetCode Sync State
   const [lcUsername, setLcUsername] = useState("");
   const [syncingLc, setSyncingLc] = useState(false);
-  const [lcResult, setLcResult] = useState<CodingSyncResult | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("streakflow_lc_result");
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return null;
-  });
+  const [lcResult, setLcResult] = useState<CodingSyncResult | null>(null);
   const [lcError, setLcError] = useState<string | null>(null);
 
   // Codeforces Sync State
   const [cfHandle, setCfHandle] = useState("");
   const [syncingCf, setSyncingCf] = useState(false);
-  const [cfResult, setCfResult] = useState<CodingSyncResult | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("streakflow_cf_result");
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return null;
-  });
+  const [cfResult, setCfResult] = useState<CodingSyncResult | null>(null);
   const [cfError, setCfError] = useState<string | null>(null);
 
   // Breakdown View Mode: "logged" (Arena Logs) vs "profiles" (Live Profiles)
@@ -107,6 +91,7 @@ export default function AchievementsView({
     "all" | "unlocked" | "locked"
   >("all");
   const [cachedTodayMins, setCachedTodayMins] = useState(0);
+  const [localTotalCompleted, setLocalTotalCompleted] = useState(0);
 
   const loadStatsData = useCallback(async () => {
     setLoadingAnalytics(true);
@@ -129,6 +114,21 @@ export default function AchievementsView({
     let savedLc = "";
     let savedCf = "";
     if (typeof window !== "undefined") {
+      try {
+        const savedLcRes = localStorage.getItem("streakflow_lc_result");
+        if (savedLcRes) setLcResult(JSON.parse(savedLcRes));
+      } catch {}
+      try {
+        const savedCfRes = localStorage.getItem("streakflow_cf_result");
+        if (savedCfRes) setCfResult(JSON.parse(savedCfRes));
+      } catch {}
+
+      const totalMins = parseInt(
+        localStorage.getItem("streakflow_focus_total_completed_mins") || "0",
+        10,
+      );
+      setLocalTotalCompleted(totalMins);
+
       savedLc = localStorage.getItem("streakflow_lc_handle") || "";
       savedCf = localStorage.getItem("streakflow_cf_handle") || "";
       if (savedLc) setLcUsername(savedLc);
@@ -180,11 +180,17 @@ export default function AchievementsView({
         const todayKey = `streakflow_focus_mins_${new Date().toISOString().slice(0, 10)}`;
         const val = parseInt(localStorage.getItem(todayKey) || "0", 10);
         setCachedTodayMins(val);
+        const totalMins = parseInt(
+          localStorage.getItem("streakflow_focus_total_completed_mins") || "0",
+          10,
+        );
+        setLocalTotalCompleted(totalMins);
       }
     };
 
     const handleDataReset = () => {
       setCachedTodayMins(0);
+      setLocalTotalCompleted(0);
       setFocusStats({
         total_focus_minutes: 0,
         today_focus_minutes: 0,
@@ -356,165 +362,167 @@ export default function AchievementsView({
   // Expanded 15 Badges & Milestones
   const badges: BadgeItem[] = useMemo(
     () => [
-    {
-      id: "first_blood",
-      title: "First Blood",
-      desc: "Solve and record your first problem in the arena",
-      lore: "Every master was once a beginner who refused to quit.",
-      unlocked: totalSolved >= 1,
-      icon: Zap,
-      tier: "Bronze",
-      category: "DSA",
-    },
-    {
-      id: "decathlete",
-      title: "Decathlete",
-      desc: "Solve and record 10 coding problems",
-      lore: "Building the neural pathways of algorithmic intuition.",
-      unlocked: totalSolved >= 10,
-      icon: Target,
-      tier: "Bronze",
-      category: "DSA",
-    },
-    {
-      id: "half_century",
-      title: "Half Century",
-      desc: "Log 50 solved coding problems",
-      lore: "Consistency compounds into unbreakable confidence.",
-      unlocked: totalSolved >= 50,
-      icon: Trophy,
-      tier: "Silver",
-      category: "DSA",
-    },
-    {
-      id: "century",
-      title: "Centurion",
-      desc: "Log 100 solved problems in the ledger",
-      lore: "A monumental milestone reached only through relentless execution.",
-      unlocked: totalSolved >= 100,
-      icon: Crown,
-      tier: "Gold",
-      category: "DSA",
-    },
-    {
-      id: "grandmaster",
-      title: "Grandmaster Solver",
-      desc: "Accumulate 250 solved problems across platforms",
-      lore: "You navigate problem spaces like a seasoned cartographer.",
-      unlocked: totalSolved >= 250,
-      icon: Sparkles,
-      tier: "Diamond",
-      category: "DSA",
-    },
-    {
-      id: "streak_initiate",
-      title: "Consistency Initiate",
-      desc: "Maintain an active 3-day streak",
-      lore: "Momentum is starting to take over inertia.",
-      unlocked: streak >= 3,
-      icon: Flame,
-      tier: "Bronze",
-      category: "Streak",
-    },
-    {
-      id: "streak_warrior",
-      title: "Streak Warrior",
-      desc: "Maintain a 7-day consistency streak",
-      lore: "One full week without skipping a single day. Iron discipline.",
-      unlocked: streak >= 7,
-      icon: Flame,
-      tier: "Silver",
-      category: "Streak",
-    },
-    {
-      id: "unstoppable",
-      title: "Unstoppable Force",
-      desc: "Maintain a 30-day consistency streak",
-      lore: "Habit is now instinct. You are in the top 1% of dedicated builders.",
-      unlocked: streak >= 30,
-      icon: Flame,
-      tier: "Mythic",
-      category: "Streak",
-    },
-    {
-      id: "deep_focus_pioneer",
-      title: "Deep Focus Pioneer",
-      desc: "Complete your first Pomodoro deep work sprint",
-      lore: "Discipline is choosing what you want most over what you want now.",
-      unlocked: (focusStats?.total_sessions ?? 0) >= 1,
-      icon: Clock,
-      tier: "Bronze",
-      category: "Focus",
-    },
-    {
-      id: "zen_adept",
-      title: "Flow State Adept",
-      desc: "Complete at least 10 deep focus sprints",
-      lore: "Effortless concentration during extended coding sessions.",
-      unlocked: (focusStats?.total_sessions ?? 0) >= 10,
-      icon: Clock,
-      tier: "Silver",
-      category: "Focus",
-    },
-    {
-      id: "marathon_mindset",
-      title: "Marathon Mindset",
-      desc: "Complete 50 deep focus sprints (over 20+ hours)",
-      lore: "Deep work has become your unfair competitive advantage.",
-      unlocked: (focusStats?.total_sessions ?? 0) >= 50,
-      icon: Shield,
-      tier: "Platinum",
-      category: "Focus",
-    },
-    {
-      id: "level_five",
-      title: "Shield Bearer",
-      desc: "Reach Level 5 in execution hierarchy",
-      lore: "Ascending the ranks through proven consistency and XP.",
-      unlocked: level >= 5,
-      icon: Shield,
-      tier: "Silver",
-      category: "Special",
-    },
-    {
-      id: "level_ten",
-      title: "System Sovereign",
-      desc: "Reach Level 10 in execution hierarchy",
-      lore: "You command routines, focus, and algorithms with master precision.",
-      unlocked: level >= 10,
-      icon: Award,
-      tier: "Diamond",
-      category: "Special",
-    },
-    {
-      id: "dual_gladiator",
-      title: "Dual Gladiator",
-      desc: "Sync both LeetCode and Codeforces accounts",
-      lore: "Bridging the worlds of interview prep and competitive speed.",
-      unlocked: Boolean(
-        lcResult ||
-        (codingAnalytics?.platform_breakdown.some(
-          (p) => p.platform === "LeetCode",
-        ) &&
-          codingAnalytics?.platform_breakdown.some(
-            (p) => p.platform === "Codeforces",
-          )),
-      ),
-      icon: Code2,
-      tier: "Gold",
-      category: "Special",
-    },
-    {
-      id: "night_owl",
-      title: "Night Owl Architect",
-      desc: "Log a problem or focus sprint in the quiet late hours",
-      lore: "When the rest of the world is asleep, you are building.",
-      unlocked: totalSolved >= 3 || (focusStats?.total_sessions ?? 0) >= 3,
-      icon: Moon,
-      tier: "Silver",
-      category: "Special",
-    },
-  ], [totalSolved, streak, focusStats, level, lcResult, codingAnalytics]);
+      {
+        id: "first_blood",
+        title: "First Blood",
+        desc: "Solve and record your first problem in the arena",
+        lore: "Every master was once a beginner who refused to quit.",
+        unlocked: totalSolved >= 1,
+        icon: Zap,
+        tier: "Bronze",
+        category: "DSA",
+      },
+      {
+        id: "decathlete",
+        title: "Decathlete",
+        desc: "Solve and record 10 coding problems",
+        lore: "Building the neural pathways of algorithmic intuition.",
+        unlocked: totalSolved >= 10,
+        icon: Target,
+        tier: "Bronze",
+        category: "DSA",
+      },
+      {
+        id: "half_century",
+        title: "Half Century",
+        desc: "Log 50 solved coding problems",
+        lore: "Consistency compounds into unbreakable confidence.",
+        unlocked: totalSolved >= 50,
+        icon: Trophy,
+        tier: "Silver",
+        category: "DSA",
+      },
+      {
+        id: "century",
+        title: "Centurion",
+        desc: "Log 100 solved problems in the ledger",
+        lore: "A monumental milestone reached only through relentless execution.",
+        unlocked: totalSolved >= 100,
+        icon: Crown,
+        tier: "Gold",
+        category: "DSA",
+      },
+      {
+        id: "grandmaster",
+        title: "Grandmaster Solver",
+        desc: "Accumulate 250 solved problems across platforms",
+        lore: "You navigate problem spaces like a seasoned cartographer.",
+        unlocked: totalSolved >= 250,
+        icon: Sparkles,
+        tier: "Diamond",
+        category: "DSA",
+      },
+      {
+        id: "streak_initiate",
+        title: "Consistency Initiate",
+        desc: "Maintain an active 3-day streak",
+        lore: "Momentum is starting to take over inertia.",
+        unlocked: streak >= 3,
+        icon: Flame,
+        tier: "Bronze",
+        category: "Streak",
+      },
+      {
+        id: "streak_warrior",
+        title: "Streak Warrior",
+        desc: "Maintain a 7-day consistency streak",
+        lore: "One full week without skipping a single day. Iron discipline.",
+        unlocked: streak >= 7,
+        icon: Flame,
+        tier: "Silver",
+        category: "Streak",
+      },
+      {
+        id: "unstoppable",
+        title: "Unstoppable Force",
+        desc: "Maintain a 30-day consistency streak",
+        lore: "Habit is now instinct. You are in the top 1% of dedicated builders.",
+        unlocked: streak >= 30,
+        icon: Flame,
+        tier: "Mythic",
+        category: "Streak",
+      },
+      {
+        id: "deep_focus_pioneer",
+        title: "Deep Focus Pioneer",
+        desc: "Complete your first Pomodoro deep work sprint",
+        lore: "Discipline is choosing what you want most over what you want now.",
+        unlocked: (focusStats?.total_sessions ?? 0) >= 1,
+        icon: Clock,
+        tier: "Bronze",
+        category: "Focus",
+      },
+      {
+        id: "zen_adept",
+        title: "Flow State Adept",
+        desc: "Complete at least 10 deep focus sprints",
+        lore: "Effortless concentration during extended coding sessions.",
+        unlocked: (focusStats?.total_sessions ?? 0) >= 10,
+        icon: Clock,
+        tier: "Silver",
+        category: "Focus",
+      },
+      {
+        id: "marathon_mindset",
+        title: "Marathon Mindset",
+        desc: "Complete 50 deep focus sprints (over 20+ hours)",
+        lore: "Deep work has become your unfair competitive advantage.",
+        unlocked: (focusStats?.total_sessions ?? 0) >= 50,
+        icon: Shield,
+        tier: "Platinum",
+        category: "Focus",
+      },
+      {
+        id: "level_five",
+        title: "Shield Bearer",
+        desc: "Reach Level 5 in execution hierarchy",
+        lore: "Ascending the ranks through proven consistency and XP.",
+        unlocked: level >= 5,
+        icon: Shield,
+        tier: "Silver",
+        category: "Special",
+      },
+      {
+        id: "level_ten",
+        title: "System Sovereign",
+        desc: "Reach Level 10 in execution hierarchy",
+        lore: "You command routines, focus, and algorithms with master precision.",
+        unlocked: level >= 10,
+        icon: Award,
+        tier: "Diamond",
+        category: "Special",
+      },
+      {
+        id: "dual_gladiator",
+        title: "Dual Gladiator",
+        desc: "Sync both LeetCode and Codeforces accounts",
+        lore: "Bridging the worlds of interview prep and competitive speed.",
+        unlocked: Boolean(
+          lcResult ||
+          (codingAnalytics?.platform_breakdown.some(
+            (p) => p.platform === "LeetCode",
+          ) &&
+            codingAnalytics?.platform_breakdown.some(
+              (p) => p.platform === "Codeforces",
+            )),
+        ),
+        icon: Code2,
+        tier: "Gold",
+        category: "Special",
+      },
+      {
+        id: "night_owl",
+        title: "Night Owl Architect",
+        desc: "Log a problem or focus sprint in the quiet late hours",
+        lore: "When the rest of the world is asleep, you are building.",
+        unlocked: totalSolved >= 3 || (focusStats?.total_sessions ?? 0) >= 3,
+        icon: Moon,
+        tier: "Silver",
+        category: "Special",
+      },
+    ],
+    [totalSolved, streak, focusStats, level, lcResult, codingAnalytics],
+  );
 
   // Compute Logged Problems Breakdown (from user's timetable/arena logs)
   const loggedTotal = codingAnalytics?.total_solved ?? totalSolved;
@@ -636,13 +644,6 @@ export default function AchievementsView({
   );
 
   // Focus Minutes Computation (guaranteed accurate minutes & zero-latency today cache)
-  const localTotalCompleted =
-    typeof window !== "undefined"
-      ? parseInt(
-          localStorage.getItem("streakflow_focus_total_completed_mins") || "0",
-          10,
-        )
-      : 0;
   const backendToday = focusStats?.today_focus_minutes ?? 0;
   const backendTotal = focusStats?.total_focus_minutes ?? 0;
   const displayedTodayMinutes = Math.max(backendToday, cachedTodayMins);
