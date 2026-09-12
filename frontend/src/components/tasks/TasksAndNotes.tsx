@@ -251,9 +251,9 @@ export default function TasksAndNotes({
   };
 
   return (
-    <div className="space-y-6 font-mono">
+    <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 sm:p-6 flex flex-col h-full space-y-4 font-mono">
       {/* Top Header & View Switcher */}
-      <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
           <CheckSquare className="w-4 h-4 text-emerald-400" />
           <h3 className="text-xs uppercase tracking-wider text-zinc-300 font-bold">
@@ -262,7 +262,7 @@ export default function TasksAndNotes({
         </div>
 
         {/* View Switcher Tabs */}
-        <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800 text-xs">
+        <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800 text-xs self-start sm:self-auto">
           <button
             onClick={() => setActiveTab("tasks")}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition cursor-pointer text-xs ${
@@ -410,7 +410,7 @@ export default function TasksAndNotes({
               No tasks found in this view. Click "Add Task" to create one!
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[540px] overflow-y-auto scrollbar-none pr-1">
               {filteredTasks.map((t) => (
                 <div
                   key={t.id}
@@ -574,7 +574,7 @@ export default function TasksAndNotes({
               links!
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[540px] overflow-y-auto scrollbar-none pr-1">
               {filteredNotes.map((n) => (
                 <div
                   key={n.id}

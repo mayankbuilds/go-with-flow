@@ -1,14 +1,9 @@
 "use client";
 
-import { Terminal, Flame, Timer, Sun, Moon } from "lucide-react";
+import { Terminal, Flame, Timer } from "lucide-react";
 import { useState, useEffect } from "react";
 import { UserStats } from "@/types";
-import {
-  applyTheme,
-  getInitialTheme,
-  ThemeMode,
-  AccentColor,
-} from "@/lib/theme";
+import { applyTheme, getInitialTheme, AccentColor } from "@/lib/theme";
 
 interface HeaderProps {
   stats: UserStats | null;
@@ -25,19 +20,16 @@ export default function Header({
   onOpenPomodoro,
   timerInfo,
 }: HeaderProps) {
-  const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
   const [accent, setAccent] = useState<AccentColor>("emerald");
 
   useEffect(() => {
     const init = getInitialTheme();
-    setThemeMode(init.mode);
     setAccent(init.accent);
-    applyTheme(init.mode, init.accent);
+    applyTheme("dark", init.accent);
 
     const handler = (e: Event) => {
-      const custom = e as CustomEvent<{ mode: ThemeMode; accent: AccentColor }>;
+      const custom = e as CustomEvent<{ accent: AccentColor }>;
       if (custom.detail) {
-        setThemeMode(custom.detail.mode);
         setAccent(custom.detail.accent);
       }
     };
@@ -45,12 +37,6 @@ export default function Header({
     return () =>
       window.removeEventListener("streakflow-theme-changed", handler);
   }, []);
-
-  const toggleTheme = () => {
-    const next: ThemeMode = themeMode === "dark" ? "light" : "dark";
-    setThemeMode(next);
-    applyTheme(next, accent);
-  };
   const xp = stats?.xp ?? 100;
   const level = stats?.level ?? 1;
   const streakDays = stats?.current_streak_days ?? 1;
@@ -125,24 +111,6 @@ export default function Header({
             </span>
           </button>
         )}
-
-        {/* Dark / Light Theme Toggle Button */}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white transition cursor-pointer"
-          title={
-            themeMode === "dark"
-              ? "Switch to White / Light Mode"
-              : "Switch to Dark Mode"
-          }
-        >
-          {themeMode === "dark" ? (
-            <Sun className="w-4 h-4 text-amber-400" />
-          ) : (
-            <Moon className="w-4 h-4 text-cyan-400" />
-          )}
-        </button>
       </div>
     </header>
   );

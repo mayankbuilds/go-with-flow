@@ -270,9 +270,9 @@ export default function RoutineSection({
       : 0;
 
   return (
-    <div className="space-y-4 font-mono">
-      {/* SECTION HEADER */}
-      <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-800">
+    <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 sm:p-6 flex flex-col h-full space-y-4 font-mono">
+      {/* Top Header & View Switcher */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4 text-emerald-400" />
           <h3 className="text-xs uppercase tracking-wider text-zinc-300 font-bold">
@@ -280,12 +280,41 @@ export default function RoutineSection({
           </h3>
         </div>
 
-        {/* Action Controls */}
+        {/* View Switcher Tabs */}
+        <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800 text-xs self-start sm:self-auto">
+          <button
+            onClick={() => setActiveView("daily")}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition cursor-pointer text-xs ${
+              activeView === "daily"
+                ? "bg-zinc-800 text-emerald-400 font-bold border border-zinc-700 shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Daily ({dailyRoutines.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveView("upcoming")}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition cursor-pointer text-xs ${
+              activeView === "upcoming"
+                ? "bg-zinc-800 text-cyan-400 font-bold border border-zinc-700 shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            <span>Agenda ({upcomingEvents.length})</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Controls Bar */}
+      <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {/* Arrange by time button */}
           <button
             onClick={() => setSortByTimeAsc(!sortByTimeAsc)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] text-zinc-300 transition cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 transition cursor-pointer"
             title="Arrange schedule by time (Toggle Sort Order)"
           >
             <ArrowUpDown className="w-3.5 h-3.5 text-emerald-400" />
@@ -295,47 +324,20 @@ export default function RoutineSection({
           {/* Manage categories button */}
           <button
             onClick={() => setShowCategoryManager(true)}
-            className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
+            className="p-1.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
             title="Manage Categories"
           >
             <Tag className="w-3.5 h-3.5" />
           </button>
-
-          {/* Add Block */}
-          <button
-            onClick={() => setShowAdd(!showAdd)}
-            className="flex items-center gap-1 px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-lg transition cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>{showAdd ? "Cancel" : "Add"}</span>
-          </button>
         </div>
-      </div>
 
-      {/* TABS: Daily Routine vs Upcoming Events */}
-      <div className="flex items-center gap-2 border-b border-zinc-900 pb-2">
+        {/* Add Block */}
         <button
-          onClick={() => setActiveView("daily")}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs transition cursor-pointer ${
-            activeView === "daily"
-              ? "bg-zinc-800 text-emerald-400 font-bold border border-zinc-700"
-              : "text-zinc-400 hover:text-zinc-200"
-          }`}
+          onClick={() => setShowAdd(!showAdd)}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-xl transition cursor-pointer shadow-sm"
         >
-          <Clock className="w-3.5 h-3.5" />
-          <span>Daily Timetable ({dailyRoutines.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveView("upcoming")}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs transition cursor-pointer ${
-            activeView === "upcoming"
-              ? "bg-zinc-800 text-cyan-400 font-bold border border-zinc-700"
-              : "text-zinc-400 hover:text-zinc-200"
-          }`}
-        >
-          <CalendarDays className="w-3.5 h-3.5" />
-          <span>Upcoming Events & Agenda ({upcomingEvents.length})</span>
+          <Plus className="w-4 h-4" />
+          <span>{showAdd ? "Cancel" : "Add Routine"}</span>
         </button>
       </div>
 
@@ -483,7 +485,7 @@ export default function RoutineSection({
 
       {/* VIEW 1: DAILY ROUTINE BLOCKS */}
       {activeView === "daily" && (
-        <div className="space-y-2.5">
+        <div className="space-y-2.5 max-h-[540px] overflow-y-auto scrollbar-none pr-1">
           {dailyRoutines.length === 0 ? (
             <div className="p-8 text-center text-xs text-zinc-600 border border-dashed border-zinc-800 rounded-2xl">
               No routine blocks added yet. Click "+ Add" to build your execution
@@ -656,7 +658,7 @@ export default function RoutineSection({
 
       {/* VIEW 2: UPCOMING EVENTS & DATED AGENDA */}
       {activeView === "upcoming" && (
-        <div className="space-y-3">
+        <div className="space-y-2.5 max-h-[540px] overflow-y-auto scrollbar-none pr-1">
           {upcomingEvents.length === 0 ? (
             <div className="p-8 text-center text-xs text-zinc-600 border border-dashed border-zinc-800 rounded-2xl">
               No dated upcoming events scheduled yet. When adding a routine

@@ -1,6 +1,6 @@
 "use client";
 
-export type ThemeMode = "dark" | "light";
+export type ThemeMode = "dark";
 export type AccentColor = "emerald" | "cyan" | "purple" | "amber" | "rose";
 
 export interface AccentConfig {
@@ -49,21 +49,15 @@ export const ACCENT_PALETTES: AccentConfig[] = [
   },
 ];
 
-export function applyTheme(mode: ThemeMode, accent: AccentColor) {
+export function applyTheme(_mode: ThemeMode = "dark", accent: AccentColor = "emerald") {
   if (typeof window === "undefined") return;
 
   const root = document.documentElement;
 
-  // Apply mode
-  if (mode === "light") {
-    root.classList.remove("dark");
-    root.classList.add("light");
-    root.setAttribute("data-theme", "light");
-  } else {
-    root.classList.remove("light");
-    root.classList.add("dark");
-    root.setAttribute("data-theme", "dark");
-  }
+  // Always dark mode
+  root.classList.remove("light");
+  root.classList.add("dark");
+  root.setAttribute("data-theme", "dark");
 
   // Apply accent
   root.setAttribute("data-accent", accent);
@@ -72,12 +66,11 @@ export function applyTheme(mode: ThemeMode, accent: AccentColor) {
   root.style.setProperty("--theme-accent", found.hex);
   root.style.setProperty("--theme-accent-glow", found.glow);
 
-  // Save to localStorage
-  localStorage.setItem("streakflow_theme_mode", mode);
+  localStorage.setItem("streakflow_theme_mode", "dark");
   localStorage.setItem("streakflow_accent_color", accent);
 
   window.dispatchEvent(
-    new CustomEvent("streakflow-theme-changed", { detail: { mode, accent } }),
+    new CustomEvent("streakflow-theme-changed", { detail: { mode: "dark", accent } }),
   );
 }
 
@@ -86,12 +79,10 @@ export function getInitialTheme(): { mode: ThemeMode; accent: AccentColor } {
     return { mode: "dark", accent: "emerald" };
   }
 
-  const savedMode = (localStorage.getItem("streakflow_theme_mode") as ThemeMode) || "dark";
   const savedAccent = (localStorage.getItem("streakflow_accent_color") as AccentColor) || "emerald";
 
   return {
-    mode: savedMode === "light" ? "light" : "dark",
+    mode: "dark",
     accent: ACCENT_PALETTES.some((p) => p.id === savedAccent) ? savedAccent : "emerald",
   };
 }
-

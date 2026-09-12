@@ -8,9 +8,6 @@ import {
   CheckSquare,
   Award,
   Settings as SettingsIcon,
-  Clock,
-  FileText,
-  Layers,
 } from "lucide-react";
 import Header from "@/components/navigation/Header";
 import MobileNav, { NavTab } from "@/components/navigation/MobileNav";
@@ -35,9 +32,6 @@ import {
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<NavTab>("arena");
-  const [tasksSubView, setTasksSubView] = useState<
-    "all" | "timetable" | "backlog"
-  >("all");
   const [stats, setStats] = useState<UserStats | null>(null);
   const [heatmapData, setHeatmapData] = useState<HeatmapDay[]>([]);
   const [recentLogs, setRecentLogs] = useState<CodingLog[]>([]);
@@ -344,91 +338,30 @@ export default function Home() {
         </div>
 
         {/* VIEW 3: UNIFIED TASKS & NOTES HUB (Rule-of-3 + Timetable Schedule + Task Backlog + Scratchpad) */}
-        <div className={activeTab === "tasks" ? "space-y-6" : "hidden"}>
+        <div
+          className={
+            activeTab === "tasks" ? "space-y-6 max-w-7xl mx-auto" : "hidden"
+          }
+        >
           {/* Top Mission: Rule-of-3 Daily Focus */}
-          <div className="max-w-4xl mx-auto">
-            <FocusSection
-              tasks={focusTasks}
-              onSave={handleSaveFocus}
-              onToggle={handleToggleFocus}
-              onDelete={handleDeleteFocus}
+          <FocusSection
+            tasks={focusTasks}
+            onSave={handleSaveFocus}
+            onToggle={handleToggleFocus}
+            onDelete={handleDeleteFocus}
+          />
+
+          {/* Symmetrical 2-Column Desktop Grid / Stacked Phone Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            <RoutineSection
+              routines={routines}
+              onToggle={handleToggleRoutine}
+              onCreate={handleCreateRoutine}
+              onUpdate={handleUpdateRoutine}
+              onDelete={handleDeleteRoutine}
             />
+            <TasksAndNotes onPromoteToFocus={handlePromoteTaskToFocus} />
           </div>
-
-          {/* Sub-View Switcher within Tasks & Notes */}
-          <div className="flex items-center justify-center sm:justify-start border-b border-zinc-800 pb-3 max-w-7xl mx-auto">
-            <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
-              <button
-                onClick={() => setTasksSubView("all")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
-                  tasksSubView === "all"
-                    ? "bg-zinc-800 text-emerald-400 font-bold border border-zinc-700"
-                    : "text-zinc-500 hover:text-zinc-300"
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>All-in-One</span>
-              </button>
-              <button
-                onClick={() => setTasksSubView("timetable")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
-                  tasksSubView === "timetable"
-                    ? "bg-zinc-800 text-cyan-400 font-bold border border-zinc-700"
-                    : "text-zinc-500 hover:text-zinc-300"
-                }`}
-              >
-                <Clock className="w-3.5 h-3.5" />
-                <span>Timetable Schedule</span>
-              </button>
-              <button
-                onClick={() => setTasksSubView("backlog")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
-                  tasksSubView === "backlog"
-                    ? "bg-zinc-800 text-purple-400 font-bold border border-zinc-700"
-                    : "text-zinc-500 hover:text-zinc-300"
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Tasks & Notes</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Content Views */}
-          {tasksSubView === "all" && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-7xl mx-auto">
-              <div className="lg:col-span-6">
-                <RoutineSection
-                  routines={routines}
-                  onToggle={handleToggleRoutine}
-                  onCreate={handleCreateRoutine}
-                  onUpdate={handleUpdateRoutine}
-                  onDelete={handleDeleteRoutine}
-                />
-              </div>
-              <div className="lg:col-span-6">
-                <TasksAndNotes onPromoteToFocus={handlePromoteTaskToFocus} />
-              </div>
-            </div>
-          )}
-
-          {tasksSubView === "timetable" && (
-            <div className="max-w-4xl mx-auto">
-              <RoutineSection
-                routines={routines}
-                onToggle={handleToggleRoutine}
-                onCreate={handleCreateRoutine}
-                onUpdate={handleUpdateRoutine}
-                onDelete={handleDeleteRoutine}
-              />
-            </div>
-          )}
-
-          {tasksSubView === "backlog" && (
-            <div className="max-w-4xl mx-auto">
-              <TasksAndNotes onPromoteToFocus={handlePromoteTaskToFocus} />
-            </div>
-          )}
         </div>
 
         {/* VIEW 4: STATISTICS & BADGES */}

@@ -27,7 +27,6 @@ import {
   applyTheme,
   getInitialTheme,
   ACCENT_PALETTES,
-  ThemeMode,
   AccentColor,
 } from "@/lib/theme";
 
@@ -94,20 +93,20 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
   // Preferences State
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [defaultDuration, setDefaultDuration] = useState("25");
-  const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
   const [accentTheme, setAccentTheme] = useState<AccentColor>("emerald");
   const [driveAutoSync, setDriveAutoSync] = useState(false);
   const [prefLcHandle, setPrefLcHandle] = useState("");
   const [prefCfHandle, setPrefCfHandle] = useState("");
   const [handlesSaved, setHandlesSaved] = useState(false);
   const [syncingHandles, setSyncingHandles] = useState(false);
-  const [handlesSyncResult, setHandlesSyncResult] = useState<string | null>(null);
+  const [handlesSyncResult, setHandlesSyncResult] = useState<string | null>(
+    null,
+  );
 
   // Load preferences from localStorage on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
       const init = getInitialTheme();
-      setThemeMode(init.mode);
       setAccentTheme(init.accent);
 
       const soundVal = localStorage.getItem("streakflow_sound_enabled");
@@ -132,13 +131,18 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
     const handleHandlesUpdated = (e: Event) => {
       const custom = e as CustomEvent<{ lcHandle?: string; cfHandle?: string }>;
       if (custom.detail) {
-        if (custom.detail.lcHandle !== undefined) setPrefLcHandle(custom.detail.lcHandle);
-        if (custom.detail.cfHandle !== undefined) setPrefCfHandle(custom.detail.cfHandle);
+        if (custom.detail.lcHandle !== undefined)
+          setPrefLcHandle(custom.detail.lcHandle);
+        if (custom.detail.cfHandle !== undefined)
+          setPrefCfHandle(custom.detail.cfHandle);
       }
     };
     window.addEventListener("streakflow-handles-updated", handleHandlesUpdated);
     return () => {
-      window.removeEventListener("streakflow-handles-updated", handleHandlesUpdated);
+      window.removeEventListener(
+        "streakflow-handles-updated",
+        handleHandlesUpdated,
+      );
     };
   }, []);
 
@@ -160,11 +164,11 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
           const gain = ctx.createGain();
           osc.connect(gain);
           gain.connect(ctx.destination);
-          osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-          gain.gain.setValueAtTime(0.2, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+          osc.frequency.setValueAtTime(520, ctx.currentTime);
+          gain.gain.setValueAtTime(0.15, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
           osc.start(ctx.currentTime);
-          osc.stop(ctx.currentTime + 0.3);
+          osc.stop(ctx.currentTime + 0.15);
         }
       } catch {}
     }
@@ -182,12 +186,7 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
     if (typeof window !== "undefined") {
       localStorage.setItem("streakflow_accent_color", accent);
     }
-    applyTheme(themeMode, accent);
-  };
-
-  const handleSelectThemeMode = (mode: ThemeMode) => {
-    setThemeMode(mode);
-    applyTheme(mode, accentTheme);
+    applyTheme("dark", accent);
   };
 
   const toggleDriveAutoSync = () => {
@@ -554,49 +553,6 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
                   {d.label}
                 </button>
               ))}
-            </div>
-          </div>
-
-          {/* Theme Mode Selection (Dark vs White Mode) */}
-          <div className="pt-3 border-t border-zinc-800 flex items-center justify-between text-xs">
-            <div>
-              <span className="text-zinc-200 block font-bold flex items-center gap-1.5">
-                {themeMode === "dark" ? (
-                  <Moon className="w-3.5 h-3.5 text-cyan-400" />
-                ) : (
-                  <Sun className="w-3.5 h-3.5 text-amber-400" />
-                )}
-                Display Mode
-              </span>
-              <span className="text-[11px] text-zinc-500 mt-0.5 block">
-                Choose between cyberpunk dark or clean white mode
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
-              <button
-                type="button"
-                onClick={() => handleSelectThemeMode("dark")}
-                className={`px-3 py-1 rounded-lg text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
-                  themeMode === "dark"
-                    ? "bg-zinc-800 text-white font-bold"
-                    : "text-zinc-400 hover:text-zinc-200"
-                }`}
-              >
-                <Moon className="w-3 h-3 text-cyan-400" />
-                Dark
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSelectThemeMode("light")}
-                className={`px-3 py-1 rounded-lg text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
-                  themeMode === "light"
-                    ? "bg-zinc-800 text-amber-400 font-bold"
-                    : "text-zinc-400 hover:text-zinc-200"
-                }`}
-              >
-                <Sun className="w-3 h-3 text-amber-400" />
-                White Mode
-              </button>
             </div>
           </div>
 

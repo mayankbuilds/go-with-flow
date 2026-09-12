@@ -20,6 +20,13 @@ import {
 import confetti from "canvas-confetti";
 import { api } from "@/lib/api";
 
+declare global {
+  interface Window {
+    YT?: any;
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
 export type TimerMode = "focus" | "short_break" | "long_break";
 
 export interface MusicPreset {
@@ -122,7 +129,7 @@ export default function PomodoroTimer({
   const [audioStatusMsg, setAudioStatusMsg] = useState<string | null>(null);
   const [activeYtId, setActiveYtId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const ytIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const ytPlayerRef = useRef<any>(null);
   const prevVolumeRef = useRef<number>(0.4);
 
   // Web Audio Context & Nodes for offline sound generator
@@ -132,6 +139,23 @@ export default function PomodoroTimer({
     rightOsc?: OscillatorNode;
     gainNode?: GainNode;
   } | null>(null);
+
+  // Load YouTube IFrame API script once
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.YT && window.YT.Player) return;
+    if (document.getElementById("streakflow-yt-script")) return;
+
+    const tag = document.createElement("script");
+    tag.id = "streakflow-yt-script";
+    tag.src = "https://www.youtube.com/iframe_api";
+    const firstScriptTag = document.getElementsByTagName("script")[0];
+    if (firstScriptTag?.parentNode) {
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    } else {
+      document.head.appendChild(tag);
+    }
+  }, []);
 
   // Load preferences from localStorage on mount
   useEffect(() => {
@@ -507,6 +531,107 @@ export default function PomodoroTimer({
 
   // Direct start audio function to guarantee user-gesture acceptance
   // Audio stream & YouTube player controller
+  const createOrLoadYTPlayer = useCallback(
+    (videoId: string) => {
+      const initPlayer = () => {
+        if (!window.YT || !window.YT.Player) return;
+        const container = document.getElementById("streakflow-yt-player");
+        if (!container) return;
+
+        if (
+          ytPlayerRef.current &&
+          typeof ytPlayerRef.current.loadVideoById === "function"
+        ) {
+          try {
+            ytPlayerRef.current.loadVideoById(videoId);
+            ytPlayerRef.current.setVolume(Math.round(musicVolume * 100));
+            if (musicVolume === 0) {
+              ytPlayerRef.current.mute();
+            } else {
+              ytPlayerRef.current.unMute();
+            }
+            ytPlayerRef.current.playVideo();
+            return;
+          } catch {
+            // Re-create if player was destroyed or invalidated
+          }
+        }
+
+        try {
+          ytPlayerRef.current = new window.YT.Player("streakflow-yt-player", {
+            height: "100",
+            width: "100",
+            videoId: videoId,
+            playerVars: {
+              autoplay: 1,
+              controls: 0,
+              disablekb: 1,
+              fs: 0,
+              playsinline: 1,
+              rel: 0,
+              origin:
+                typeof window !== "undefined"
+                  ? window.location.origin
+                  : undefined,
+            },
+            events: {
+              onReady: (event: any) => {
+                try {
+                  event.target.setVolume(Math.round(musicVolume * 100));
+                  if (musicVolume === 0) {
+                    event.target.mute();
+                  } else {
+                    event.target.unMute();
+                  }
+                  event.target.playVideo();
+                } catch {}
+              },
+              onStateChange: (event: any) => {
+                // 0 = YT.PlayerState.ENDED: Immediately loop without stopping
+                if (event.data === 0) {
+                  try {
+                    event.target.seekTo(0, true);
+                    event.target.playVideo();
+                  } catch {}
+                } else if (event.data === 1) {
+                  // 1 = YT.PlayerState.PLAYING
+                  setMusicPlaying(true);
+                  setAudioStatusMsg(`Streaming YouTube Audio (${videoId})`);
+                }
+              },
+              onError: (err: any) => {
+                console.warn("YouTube player error:", err);
+                setAudioStatusMsg("YouTube playback error. Try another video.");
+              },
+            },
+          });
+        } catch (e) {
+          console.warn("Error creating YouTube player:", e);
+        }
+      };
+
+      if (typeof window !== "undefined") {
+        if (window.YT && window.YT.Player) {
+          initPlayer();
+        } else {
+          const prevReady = window.onYouTubeIframeAPIReady;
+          window.onYouTubeIframeAPIReady = () => {
+            if (typeof prevReady === "function") prevReady();
+            initPlayer();
+          };
+          const interval = setInterval(() => {
+            if (window.YT && window.YT.Player) {
+              clearInterval(interval);
+              initPlayer();
+            }
+          }, 200);
+          setTimeout(() => clearInterval(interval), 4000);
+        }
+      }
+    },
+    [musicVolume],
+  );
+
   const playAudioStream = useCallback(
     (url: string) => {
       stopSynth();
@@ -516,13 +641,22 @@ export default function PomodoroTimer({
         setActiveYtId(ytId);
         setMusicPlaying(true);
         setAudioStatusMsg(`Streaming YouTube Audio (${ytId})`);
+        createOrLoadYTPlayer(ytId);
         return;
       }
 
+      // If switching to direct audio stream, stop YouTube player if active
+      if (
+        ytPlayerRef.current &&
+        typeof ytPlayerRef.current.stopVideo === "function"
+      ) {
+        try {
+          ytPlayerRef.current.stopVideo();
+        } catch {}
+      }
       setActiveYtId(null);
       if (!audioRef.current) return;
 
-      setAudioStatusMsg("Connecting stream...");
       setAudioStatusMsg("Connecting direct stream...");
       audioRef.current.crossOrigin = "anonymous";
       audioRef.current.src = url;
@@ -534,12 +668,10 @@ export default function PomodoroTimer({
         playPromise
           .then(() => {
             setMusicPlaying(true);
-            setAudioStatusMsg("Playing");
             setAudioStatusMsg("Playing Direct Stream");
           })
           .catch((err) => {
             console.warn("Direct stream play error:", err);
-            setAudioStatusMsg("Unable to stream URL (Format or CORS error)");
             setAudioStatusMsg(
               "Direct stream unreachable. Paste direct .mp3 / icecast URL or YouTube link.",
             );
@@ -547,11 +679,19 @@ export default function PomodoroTimer({
           });
       }
     },
-    [musicVolume, stopSynth],
+    [musicVolume, stopSynth, createOrLoadYTPlayer],
   );
 
   const startOfflineSynth = useCallback(
     (type: "brown_noise" | "binaural" | "rain") => {
+      if (
+        ytPlayerRef.current &&
+        typeof ytPlayerRef.current.stopVideo === "function"
+      ) {
+        try {
+          ytPlayerRef.current.stopVideo();
+        } catch {}
+      }
       setActiveYtId(null);
       if (audioRef.current) {
         audioRef.current.pause();
@@ -591,10 +731,30 @@ export default function PomodoroTimer({
     if (musicPlaying) {
       if (audioRef.current) audioRef.current.pause();
       stopSynth();
-      setActiveYtId(null);
+      if (
+        activeYtId &&
+        ytPlayerRef.current &&
+        typeof ytPlayerRef.current.pauseVideo === "function"
+      ) {
+        try {
+          ytPlayerRef.current.pauseVideo();
+        } catch {}
+      }
       setMusicPlaying(false);
       setAudioStatusMsg("Paused");
     } else {
+      if (
+        activeYtId &&
+        ytPlayerRef.current &&
+        typeof ytPlayerRef.current.playVideo === "function"
+      ) {
+        try {
+          ytPlayerRef.current.playVideo();
+          setMusicPlaying(true);
+          setAudioStatusMsg(`Streaming YouTube Audio (${activeYtId})`);
+          return;
+        } catch {}
+      }
       if (useCustomMusic && customMusicUrl) {
         playAudioStream(customMusicUrl);
       } else if (activePreset.type === "stream") {
@@ -605,9 +765,31 @@ export default function PomodoroTimer({
     }
   };
 
+  const stopYouTubeAudio = () => {
+    if (
+      ytPlayerRef.current &&
+      typeof ytPlayerRef.current.stopVideo === "function"
+    ) {
+      try {
+        ytPlayerRef.current.stopVideo();
+      } catch {}
+    }
+    setActiveYtId(null);
+    setMusicPlaying(false);
+    setAudioStatusMsg("Audio stopped");
+  };
+
   const handleSelectPreset = (preset: MusicPreset) => {
     setSelectedMusicPreset(preset.id);
     setUseCustomMusic(false);
+    if (
+      ytPlayerRef.current &&
+      typeof ytPlayerRef.current.stopVideo === "function"
+    ) {
+      try {
+        ytPlayerRef.current.stopVideo();
+      } catch {}
+    }
     setActiveYtId(null);
     if (preset.type === "stream") {
       playAudioStream(preset.url);
@@ -637,7 +819,7 @@ export default function PomodoroTimer({
     }
   };
 
-  // Adjust volume across HTML5 audio, Web Audio synths, and YouTube iframe
+  // Adjust volume across HTML5 audio, Web Audio synths, and YouTube player
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = musicVolume;
@@ -652,69 +834,23 @@ export default function PomodoroTimer({
         synthCtxRef.current.currentTime,
       );
     }
-    if (ytIframeRef.current?.contentWindow) {
+    if (ytPlayerRef.current) {
       try {
         if (musicVolume === 0) {
-          ytIframeRef.current.contentWindow.postMessage(
-            JSON.stringify({ event: "command", func: "mute", args: [] }),
-            "*",
-          );
+          if (typeof ytPlayerRef.current.mute === "function") {
+            ytPlayerRef.current.mute();
+          }
         } else {
-          ytIframeRef.current.contentWindow.postMessage(
-            JSON.stringify({ event: "command", func: "unMute", args: [] }),
-            "*",
-          );
-          ytIframeRef.current.contentWindow.postMessage(
-            JSON.stringify({
-              event: "command",
-              func: "setVolume",
-              args: [Math.round(musicVolume * 100)],
-            }),
-            "*",
-          );
+          if (typeof ytPlayerRef.current.unMute === "function") {
+            ytPlayerRef.current.unMute();
+          }
+          if (typeof ytPlayerRef.current.setVolume === "function") {
+            ytPlayerRef.current.setVolume(Math.round(musicVolume * 100));
+          }
         }
       } catch {}
     }
   }, [musicVolume, activePreset.type]);
-
-  // YouTube player loop event listener (auto restarts video when it finishes)
-  useEffect(() => {
-    const handleWindowMessage = (e: MessageEvent) => {
-      try {
-        let payload = e.data;
-        if (typeof payload === "string") {
-          payload = JSON.parse(payload);
-        }
-        // State 0 is ENDED in YouTube IFrame Player API
-        if (
-          (payload?.event === "onStateChange" && payload?.info === 0) ||
-          payload?.info === 0
-        ) {
-          if (ytIframeRef.current?.contentWindow) {
-            ytIframeRef.current.contentWindow.postMessage(
-              JSON.stringify({
-                event: "command",
-                func: "seekTo",
-                args: [0, true],
-              }),
-              "*",
-            );
-            ytIframeRef.current.contentWindow.postMessage(
-              JSON.stringify({
-                event: "command",
-                func: "playVideo",
-                args: [],
-              }),
-              "*",
-            );
-          }
-        }
-      } catch {}
-    };
-
-    window.addEventListener("message", handleWindowMessage);
-    return () => window.removeEventListener("message", handleWindowMessage);
-  }, []);
 
   // Clean up synth on unmount
   useEffect(() => {
@@ -1128,7 +1264,7 @@ export default function PomodoroTimer({
     );
   };
 
-  // Persistent audio engine keeping streams and YouTube playing across modal close
+  // Persistent audio engine keeping streams and YouTube playing across modal close & fullscreen
   const renderPersistentAudio = () => {
     return (
       <>
@@ -1140,75 +1276,44 @@ export default function PomodoroTimer({
           preload="none"
         />
 
-        {/* Persistent YouTube Stream Player */}
-        {activeYtId && (
-          <div
-            className={
-              musicPlaying && !showMusicMenu
-                ? "fixed bottom-20 sm:bottom-6 right-4 z-50 bg-zinc-950/95 border border-zinc-800 p-2.5 rounded-2xl shadow-2xl flex items-center gap-3 font-mono text-xs backdrop-blur-md animate-in fade-in"
-                : "w-0 h-0 overflow-hidden opacity-0 pointer-events-none absolute"
-            }
-          >
-            {musicPlaying && !showMusicMenu && (
-              <>
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <div className="flex flex-col">
-                    <span className="text-[11px] font-bold text-zinc-200 flex items-center gap-1">
-                      <Radio className="w-3 h-3 text-emerald-400" /> YouTube
-                      Stream
-                    </span>
-                    <span className="text-[9px] text-zinc-500 max-w-[100px] truncate">
-                      {activeYtId}
-                    </span>
-                  </div>
-                </div>
+        {/* Persistent offscreen YouTube container — keeps video alive without unmounting */}
+        <div
+          className="fixed -top-[9999px] -left-[9999px] w-24 h-24 overflow-hidden pointer-events-none opacity-0"
+          aria-hidden="true"
+        >
+          <div id="streakflow-yt-player" />
+        </div>
 
-                <button
-                  type="button"
-                  onClick={toggleMusic}
-                  className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10px] font-bold transition cursor-pointer"
-                >
-                  Pause
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    stopSynth();
-                    setActiveYtId(null);
-                    setMusicPlaying(false);
-                  }}
-                  className="p-1 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
-                  title="Stop YouTube Stream"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </>
-            )}
+        {/* Persistent YouTube Stream Status Pill */}
+        {activeYtId && musicPlaying && !showMusicMenu && (
+          <div className="fixed bottom-20 sm:bottom-6 right-4 z-50 bg-zinc-950/95 border border-zinc-800 p-2.5 rounded-2xl shadow-2xl flex items-center gap-3 font-mono text-xs backdrop-blur-md animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <div className="flex flex-col">
+                <span className="text-[11px] font-bold text-zinc-200 flex items-center gap-1">
+                  <Radio className="w-3 h-3 text-emerald-400" /> YouTube Stream
+                </span>
+                <span className="text-[9px] text-zinc-500 max-w-[100px] truncate">
+                  {activeYtId}
+                </span>
+              </div>
+            </div>
 
-            {/* Hidden iframe keeping YouTube audio alive in background */}
-            <iframe
-              ref={ytIframeRef}
-              key={activeYtId}
-              src={`https://www.youtube-nocookie.com/embed/${activeYtId}?autoplay=1&enablejsapi=1&loop=1&playlist=${activeYtId}`}
-              title="YouTube Background Audio"
-              className="w-[1px] h-[1px] opacity-0 overflow-hidden pointer-events-none absolute"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              onLoad={() => {
-                if (ytIframeRef.current?.contentWindow) {
-                  try {
-                    ytIframeRef.current.contentWindow.postMessage(
-                      JSON.stringify({
-                        event: "command",
-                        func: "setVolume",
-                        args: [Math.round(musicVolume * 100)],
-                      }),
-                      "*",
-                    );
-                  } catch {}
-                }
-              }}
-            />
+            <button
+              type="button"
+              onClick={toggleMusic}
+              className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10px] font-bold transition cursor-pointer"
+            >
+              {musicPlaying ? "Pause" : "Play"}
+            </button>
+            <button
+              type="button"
+              onClick={stopYouTubeAudio}
+              className="p-1 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
+              title="Stop YouTube Stream"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
       </>
@@ -1218,86 +1323,374 @@ export default function PomodoroTimer({
   // FULLSCREEN MODE
   if (isFullscreen) {
     return (
-      <div
-        className="fixed inset-0 z-[100] w-screen h-[100dvh] min-h-[100dvh] bg-black text-white flex flex-col justify-between p-4 sm:p-8 md:p-12 select-none overflow-hidden"
-        style={{ cursor: isIdle && isRunning ? "none" : "default" }}
-      >
+      <>
         {renderPersistentAudio()}
-
-        {/* Ambient Radial Glow */}
         <div
-          className={`absolute inset-0 pointer-events-none transition-opacity duration-1000 ${
+          className="fixed inset-0 z-[100] w-screen h-[100dvh] min-h-[100dvh] bg-black text-white flex flex-col justify-between p-4 sm:p-8 md:p-12 select-none overflow-hidden"
+          style={{ cursor: isIdle && isRunning ? "none" : "default" }}
+        >
+          {/* Ambient Radial Glow */}
+          <div
+            className={`absolute inset-0 pointer-events-none transition-opacity duration-1000 ${
+              mode === "focus"
+                ? "bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.08)_0,transparent_75%)]"
+                : mode === "short_break"
+                  ? "bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.08)_0,transparent_75%)]"
+                  : "bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.08)_0,transparent_75%)]"
+            }`}
+          />
+
+          {/* TOP BAR */}
+          <div
+            className={`relative z-10 flex items-center justify-between w-full max-w-6xl mx-auto transition-all duration-700 ${
+              isIdle && isRunning
+                ? "opacity-0 pointer-events-none -translate-y-4"
+                : "opacity-100 translate-y-0"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${
+                  isRunning ? "animate-pulse" : ""
+                } ${
+                  mode === "focus"
+                    ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
+                    : mode === "short_break"
+                      ? "bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]"
+                      : "bg-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.8)]"
+                }`}
+              />
+              <span className="font-mono text-xs sm:text-sm font-bold tracking-widest uppercase text-zinc-300">
+                {mode === "focus"
+                  ? `Deep Work Sprint (${customFocusMins}m)`
+                  : mode === "short_break"
+                    ? "Short Break"
+                    : "Long Break"}
+              </span>
+
+              {completedSessions > 0 && (
+                <span className="hidden sm:flex items-center gap-1 font-mono text-xs bg-orange-950/40 border border-orange-800/60 text-orange-400 px-2 py-0.5 rounded-md">
+                  <Flame className="w-3 h-3 fill-orange-400" />
+                  {completedSessions}{" "}
+                  {completedSessions === 1 ? "Session" : "Sessions"}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 sm:gap-3">
+              <button
+                onClick={() => setShowMusicMenu(!showMusicMenu)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-mono transition cursor-pointer ${
+                  musicPlaying
+                    ? "bg-emerald-950/70 border-emerald-500 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+                    : "bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                }`}
+                title="Focus Audio (M)"
+              >
+                <Music
+                  className={`w-3.5 h-3.5 ${musicPlaying ? "animate-spin" : ""}`}
+                />
+                <span className="hidden md:inline">
+                  {musicPlaying ? "Audio Playing" : "Focus Audio"}
+                </span>
+              </button>
+
+              <button
+                onClick={handleVolumeButtonClick}
+                className={`p-2.5 rounded-xl border transition cursor-pointer ${
+                  musicPlaying
+                    ? musicVolume === 0
+                      ? "bg-rose-950/60 border-rose-800 text-rose-400"
+                      : "bg-emerald-950/60 border-emerald-800 text-emerald-400"
+                    : "bg-zinc-900/80 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                }`}
+                title={
+                  musicPlaying
+                    ? musicVolume === 0
+                      ? "Unmute Focus Audio"
+                      : `Focus Audio: ${Math.round(musicVolume * 100)}% (Click to Mute)`
+                    : soundEnabled
+                      ? "Mute Timer Chimes"
+                      : "Enable Timer Chimes"
+                }
+              >
+                {musicPlaying ? (
+                  musicVolume === 0 ? (
+                    <VolumeX className="w-4 h-4 text-rose-400" />
+                  ) : (
+                    <Volume2 className="w-4 h-4 text-emerald-400" />
+                  )
+                ) : soundEnabled ? (
+                  <Volume2 className="w-4 h-4" />
+                ) : (
+                  <VolumeX className="w-4 h-4" />
+                )}
+              </button>
+
+              <button
+                onClick={exitFullscreen}
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white font-mono text-xs transition cursor-pointer"
+                title="Exit Fullscreen (ESC)"
+              >
+                <Minimize2 className="w-4 h-4 text-emerald-400" />
+                <span className="hidden sm:inline">Exit</span>
+                <kbd className="hidden md:inline px-1.5 py-0.5 text-[10px] bg-zinc-800 rounded border border-zinc-700 text-zinc-400">
+                  ESC
+                </kbd>
+              </button>
+            </div>
+          </div>
+
+          {/* MAIN STAGE */}
+          <div className="relative z-10 flex flex-col items-center justify-center my-auto w-full max-w-4xl mx-auto text-center px-2">
+            {/* Mode Switcher */}
+            <div
+              className={`flex items-center gap-1 sm:gap-2 mb-6 sm:mb-10 bg-zinc-950/80 p-1 sm:p-1.5 rounded-2xl border border-zinc-800 max-w-full overflow-x-auto scrollbar-none transition-all duration-700 ${
+                isIdle && isRunning
+                  ? "opacity-0 pointer-events-none -translate-y-4"
+                  : "opacity-100 translate-y-0"
+              }`}
+            >
+              <button
+                onClick={() => switchMode("focus")}
+                className={`text-xs sm:text-sm font-mono px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                  mode === "focus"
+                    ? "bg-zinc-800 text-emerald-400 font-bold shadow-sm border border-zinc-700"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                FOCUS ({customFocusMins}M)
+              </button>
+              <button
+                onClick={() => switchMode("short_break")}
+                className={`text-xs sm:text-sm font-mono px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                  mode === "short_break"
+                    ? "bg-zinc-800 text-cyan-400 font-bold shadow-sm border border-zinc-700"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                SHORT (5M)
+              </button>
+              <button
+                onClick={() => switchMode("long_break")}
+                className={`text-xs sm:text-sm font-mono px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                  mode === "long_break"
+                    ? "bg-zinc-800 text-purple-400 font-bold shadow-sm border border-zinc-700"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                LONG (15M)
+              </button>
+              <button
+                onClick={() => setShowCustomMinsInput(true)}
+                className="text-xs font-mono px-2.5 py-1.5 rounded-xl border border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200"
+                title="Set Custom Focus Time"
+              >
+                ⚙ CUSTOM
+              </button>
+            </div>
+
+            {/* GIANT DIGITAL CLOCK */}
+            <div className="my-2 sm:my-6 select-none transition-transform duration-700">
+              <div
+                className={`text-7xl xs:text-8xl sm:text-9xl md:text-[14vw] lg:text-[17vw] font-black font-mono tracking-tighter tabular-nums leading-none select-none ${
+                  isIdle && isRunning ? "scale-105" : "scale-100"
+                } transition-transform duration-700 ${
+                  mode === "focus"
+                    ? "text-white drop-shadow-[0_0_60px_rgba(16,185,129,0.25)]"
+                    : mode === "short_break"
+                      ? "text-white drop-shadow-[0_0_60px_rgba(6,182,212,0.25)]"
+                      : "text-white drop-shadow-[0_0_60px_rgba(168,85,247,0.25)]"
+                }`}
+              >
+                {formatTime(timeLeft)}
+              </div>
+
+              <p
+                className={`text-xs sm:text-sm font-mono tracking-widest text-zinc-400 uppercase mt-4 sm:mt-8 transition-opacity duration-700 ${
+                  isIdle && isRunning ? "opacity-40" : "opacity-100"
+                }`}
+              >
+                {isRunning
+                  ? mode === "focus"
+                    ? "Deep Work Sprint • In The Flow"
+                    : "Recharge & Hydrate • Rest Your Eyes"
+                  : "Timer Paused"}
+              </p>
+            </div>
+
+            {/* CONTROLS */}
+            <div
+              className={`flex items-center justify-center gap-3 sm:gap-4 mt-6 sm:mt-10 transition-all duration-700 flex-wrap ${
+                isIdle && isRunning
+                  ? "opacity-0 pointer-events-none translate-y-4"
+                  : "opacity-100 translate-y-0"
+              }`}
+            >
+              <button
+                onClick={handleToggleTimer}
+                className={`h-14 sm:h-16 px-8 sm:px-12 rounded-2xl font-mono text-xs sm:text-sm font-bold tracking-wider flex items-center gap-3 transition-all cursor-pointer ${
+                  isRunning
+                    ? "bg-zinc-900 border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+                    : mode === "focus"
+                      ? "bg-emerald-500 text-black hover:bg-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.4)]"
+                      : mode === "short_break"
+                        ? "bg-cyan-500 text-black hover:bg-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.4)]"
+                        : "bg-purple-500 text-white hover:bg-purple-400 shadow-[0_0_30px_rgba(168,85,247,0.4)]"
+                }`}
+              >
+                {isRunning ? (
+                  <>
+                    <Pause className="w-5 h-5 fill-current" /> PAUSE
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-5 h-5 fill-current" /> START SPRINT
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => resetTimer(mode)}
+                className="h-14 sm:h-16 w-14 sm:w-16 rounded-2xl bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center transition cursor-pointer"
+                title="Reset Timer (R)"
+              >
+                <RotateCcw className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* BOTTOM HELPER BAR */}
+          <div
+            className={`relative z-10 w-full max-w-6xl mx-auto flex items-center justify-between text-[11px] font-mono text-zinc-500 pt-4 border-t border-zinc-900 transition-all duration-700 ${
+              isIdle && isRunning
+                ? "opacity-0 pointer-events-none translate-y-4"
+                : "opacity-100 translate-y-0"
+            }`}
+          >
+            <div className="hidden sm:flex items-center gap-4">
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
+                  Space
+                </kbd>{" "}
+                Play/Pause
+              </span>
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
+                  F
+                </kbd>{" "}
+                Fullscreen
+              </span>
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
+                  M
+                </kbd>{" "}
+                Focus Audio
+              </span>
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
+                  R
+                </kbd>{" "}
+                Reset
+              </span>
+            </div>
+
+            <div className="hidden sm:block text-zinc-500">Go with Flow</div>
+          </div>
+
+          {renderMusicModal()}
+          {renderCustomMinsModal()}
+        </div>
+      </>
+    );
+  }
+
+  // If not inline and not fullscreen, just render audio
+  if (!showInline) {
+    return renderPersistentAudio();
+  }
+
+  // STANDARD INLINE CARD MODE
+  return (
+    <>
+      {renderPersistentAudio()}
+      <div className="relative overflow-hidden bg-black border border-zinc-800/80 rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center">
+        {/* Ambience */}
+        <div
+          className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${
             mode === "focus"
-              ? "bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.08)_0,transparent_75%)]"
+              ? "bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.05)_0,transparent_70%)]"
               : mode === "short_break"
-                ? "bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.08)_0,transparent_75%)]"
-                : "bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.08)_0,transparent_75%)]"
+                ? "bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.05)_0,transparent_70%)]"
+                : "bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.05)_0,transparent_70%)]"
           }`}
         />
 
-        {/* TOP BAR */}
-        <div
-          className={`relative z-10 flex items-center justify-between w-full max-w-6xl mx-auto transition-all duration-700 ${
-            isIdle && isRunning
-              ? "opacity-0 pointer-events-none -translate-y-4"
-              : "opacity-100 translate-y-0"
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                isRunning ? "animate-pulse" : ""
-              } ${
+        {/* Card Header */}
+        <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 mb-6 z-10">
+          <div className="flex items-center gap-1 bg-zinc-950/90 p-1 rounded-xl border border-zinc-800/80 max-w-full overflow-x-auto scrollbar-none justify-center w-full sm:w-auto">
+            <button
+              onClick={() => switchMode("focus")}
+              className={`text-xs font-mono px-3 sm:px-4 py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
                 mode === "focus"
-                  ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
-                  : mode === "short_break"
-                    ? "bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]"
-                    : "bg-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.8)]"
+                  ? "bg-zinc-800 text-emerald-400 font-bold shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-300"
               }`}
-            />
-            <span className="font-mono text-xs sm:text-sm font-bold tracking-widest uppercase text-zinc-300">
-              {mode === "focus"
-                ? `Deep Work Sprint (${customFocusMins}m)`
-                : mode === "short_break"
-                  ? "Short Break"
-                  : "Long Break"}
-            </span>
-
-            {completedSessions > 0 && (
-              <span className="hidden sm:flex items-center gap-1 font-mono text-xs bg-orange-950/40 border border-orange-800/60 text-orange-400 px-2 py-0.5 rounded-md">
-                <Flame className="w-3 h-3 fill-orange-400" />
-                {completedSessions}{" "}
-                {completedSessions === 1 ? "Session" : "Sessions"}
-              </span>
-            )}
+            >
+              FOCUS ({customFocusMins}M)
+            </button>
+            <button
+              onClick={() => switchMode("short_break")}
+              className={`text-xs font-mono px-3 sm:px-4 py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+                mode === "short_break"
+                  ? "bg-zinc-800 text-cyan-400 font-bold shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              SHORT (5M)
+            </button>
+            <button
+              onClick={() => switchMode("long_break")}
+              className={`text-xs font-mono px-3 sm:px-4 py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+                mode === "long_break"
+                  ? "bg-zinc-800 text-purple-400 font-bold shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              LONG (15M)
+            </button>
+            <button
+              onClick={() => setShowCustomMinsInput(true)}
+              className="text-[11px] font-mono px-2 py-1 rounded-lg border border-dashed border-zinc-700 text-zinc-400 hover:text-emerald-400 whitespace-nowrap transition cursor-pointer"
+              title="Custom duration"
+            >
+              ⚙ CUSTOM
+            </button>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center justify-center gap-2 w-full sm:w-auto">
             <button
-              onClick={() => setShowMusicMenu(!showMusicMenu)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-mono transition cursor-pointer ${
+              onClick={() => setShowMusicMenu(true)}
+              className={`p-2 rounded-xl border text-xs font-mono transition cursor-pointer ${
                 musicPlaying
-                  ? "bg-emerald-950/70 border-emerald-500 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]"
-                  : "bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                  ? "bg-emerald-950/80 border-emerald-500 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+                  : "bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-200"
               }`}
               title="Focus Audio (M)"
             >
               <Music
                 className={`w-3.5 h-3.5 ${musicPlaying ? "animate-spin" : ""}`}
               />
-              <span className="hidden md:inline">
-                {musicPlaying ? "Audio Playing" : "Focus Audio"}
-              </span>
             </button>
 
             <button
               onClick={handleVolumeButtonClick}
-              className={`p-2.5 rounded-xl border transition cursor-pointer ${
+              className={`p-2 rounded-xl border transition cursor-pointer ${
                 musicPlaying
                   ? musicVolume === 0
                     ? "bg-rose-950/60 border-rose-800 text-rose-400"
                     : "bg-emerald-950/60 border-emerald-800 text-emerald-400"
-                  : "bg-zinc-900/80 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                  : "bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200"
               }`}
               title={
                 musicPlaying
@@ -1311,392 +1704,105 @@ export default function PomodoroTimer({
             >
               {musicPlaying ? (
                 musicVolume === 0 ? (
-                  <VolumeX className="w-4 h-4 text-rose-400" />
+                  <VolumeX className="w-3.5 h-3.5 text-rose-400" />
                 ) : (
-                  <Volume2 className="w-4 h-4 text-emerald-400" />
+                  <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
                 )
               ) : soundEnabled ? (
-                <Volume2 className="w-4 h-4" />
+                <Volume2 className="w-3.5 h-3.5" />
               ) : (
-                <VolumeX className="w-4 h-4" />
+                <VolumeX className="w-3.5 h-3.5" />
               )}
             </button>
 
             <button
-              onClick={exitFullscreen}
-              className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white font-mono text-xs transition cursor-pointer"
-              title="Exit Fullscreen (ESC)"
+              onClick={enterFullscreen}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/40 hover:bg-emerald-950/70 border border-emerald-800/70 hover:border-emerald-600 text-emerald-400 text-xs font-mono font-bold transition cursor-pointer shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+              title="Enter Fullscreen (F)"
             >
-              <Minimize2 className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Exit</span>
-              <kbd className="hidden md:inline px-1.5 py-0.5 text-[10px] bg-zinc-800 rounded border border-zinc-700 text-zinc-400">
-                ESC
-              </kbd>
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span>Fullscreen</span>
             </button>
           </div>
         </div>
 
-        {/* MAIN STAGE */}
-        <div className="relative z-10 flex flex-col items-center justify-center my-auto w-full max-w-4xl mx-auto text-center px-2">
-          {/* Mode Switcher */}
-          <div
-            className={`flex items-center gap-1 sm:gap-2 mb-6 sm:mb-10 bg-zinc-950/80 p-1 sm:p-1.5 rounded-2xl border border-zinc-800 max-w-full overflow-x-auto transition-all duration-700 ${
-              isIdle && isRunning
-                ? "opacity-0 pointer-events-none -translate-y-4"
-                : "opacity-100 translate-y-0"
-            }`}
-          >
-            <button
-              onClick={() => switchMode("focus")}
-              className={`text-xs sm:text-sm font-mono px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-                mode === "focus"
-                  ? "bg-zinc-800 text-emerald-400 font-bold shadow-sm border border-zinc-700"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              FOCUS ({customFocusMins}M)
-            </button>
-            <button
-              onClick={() => switchMode("short_break")}
-              className={`text-xs sm:text-sm font-mono px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-                mode === "short_break"
-                  ? "bg-zinc-800 text-cyan-400 font-bold shadow-sm border border-zinc-700"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              SHORT (5M)
-            </button>
-            <button
-              onClick={() => switchMode("long_break")}
-              className={`text-xs sm:text-sm font-mono px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-                mode === "long_break"
-                  ? "bg-zinc-800 text-purple-400 font-bold shadow-sm border border-zinc-700"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              LONG (15M)
-            </button>
-            <button
-              onClick={() => setShowCustomMinsInput(true)}
-              className="text-xs font-mono px-2.5 py-1.5 rounded-xl border border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200"
-              title="Set Custom Focus Time"
-            >
-              ⚙ CUSTOM
-            </button>
-          </div>
-
-          {/* GIANT DIGITAL CLOCK */}
-          <div className="my-2 sm:my-6 select-none transition-transform duration-700">
-            <div
-              className={`text-7xl xs:text-8xl sm:text-9xl md:text-[14vw] lg:text-[17vw] font-black font-mono tracking-tighter tabular-nums leading-none select-none ${
-                isIdle && isRunning ? "scale-105" : "scale-100"
-              } transition-transform duration-700 ${
-                mode === "focus"
-                  ? "text-white drop-shadow-[0_0_60px_rgba(16,185,129,0.25)]"
-                  : mode === "short_break"
-                    ? "text-white drop-shadow-[0_0_60px_rgba(6,182,212,0.25)]"
-                    : "text-white drop-shadow-[0_0_60px_rgba(168,85,247,0.25)]"
-              }`}
-            >
-              {formatTime(timeLeft)}
-            </div>
-
-            <p
-              className={`text-xs sm:text-sm font-mono tracking-widest text-zinc-400 uppercase mt-4 sm:mt-8 transition-opacity duration-700 ${
-                isIdle && isRunning ? "opacity-40" : "opacity-100"
-              }`}
-            >
-              {isRunning
-                ? mode === "focus"
-                  ? "Deep Work Sprint • In The Flow"
-                  : "Recharge & Hydrate • Rest Your Eyes"
-                : "Timer Paused"}
-            </p>
-          </div>
-
-          {/* CONTROLS */}
-          <div
-            className={`flex items-center justify-center gap-3 sm:gap-4 mt-6 sm:mt-10 transition-all duration-700 flex-wrap ${
-              isIdle && isRunning
-                ? "opacity-0 pointer-events-none translate-y-4"
-                : "opacity-100 translate-y-0"
-            }`}
-          >
-            <button
-              onClick={handleToggleTimer}
-              className={`h-14 sm:h-16 px-8 sm:px-12 rounded-2xl font-mono text-xs sm:text-sm font-bold tracking-wider flex items-center gap-3 transition-all cursor-pointer ${
-                isRunning
-                  ? "bg-zinc-900 border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
-                  : mode === "focus"
-                    ? "bg-emerald-500 text-black hover:bg-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.4)]"
-                    : mode === "short_break"
-                      ? "bg-cyan-500 text-black hover:bg-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.4)]"
-                      : "bg-purple-500 text-white hover:bg-purple-400 shadow-[0_0_30px_rgba(168,85,247,0.4)]"
-              }`}
-            >
-              {isRunning ? (
-                <>
-                  <Pause className="w-5 h-5 fill-current" /> PAUSE
-                </>
-              ) : (
-                <>
-                  <Play className="w-5 h-5 fill-current" /> START SPRINT
-                </>
-              )}
-            </button>
-
-            <button
-              onClick={() => resetTimer(mode)}
-              className="h-14 sm:h-16 w-14 sm:w-16 rounded-2xl bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center transition cursor-pointer"
-              title="Reset Timer (R)"
-            >
-              <RotateCcw className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* BOTTOM HELPER BAR */}
+        {/* Clock Display */}
         <div
-          className={`relative z-10 w-full max-w-6xl mx-auto flex items-center justify-between text-[11px] font-mono text-zinc-500 pt-4 border-t border-zinc-900 transition-all duration-700 ${
-            isIdle && isRunning
-              ? "opacity-0 pointer-events-none translate-y-4"
-              : "opacity-100 translate-y-0"
-          }`}
+          onClick={enterFullscreen}
+          className="my-2 z-10 text-center cursor-pointer group"
+          title="Click for Fullscreen Zen Mode"
         >
-          <div className="hidden sm:flex items-center gap-4">
-            <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
-                Space
-              </kbd>{" "}
-              Play/Pause
-            </span>
-            <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
-                F
-              </kbd>{" "}
-              Fullscreen
-            </span>
-            <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
-                M
-              </kbd>{" "}
-              Focus Audio
-            </span>
-            <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
-                R
-              </kbd>{" "}
-              Reset
-            </span>
+          <div className="text-6xl sm:text-7xl md:text-8xl font-black font-mono tracking-tighter text-white tabular-nums select-none drop-shadow-[0_0_25px_rgba(255,255,255,0.06)] group-hover:scale-[1.02] transition-transform">
+            {formatTime(timeLeft)}
           </div>
+          <p className="text-[11px] font-mono tracking-widest text-zinc-500 uppercase mt-2 group-hover:text-emerald-400 transition-colors">
+            {isRunning
+              ? mode === "focus"
+                ? "Deep Work Sprint • In The Flow"
+                : "Resting & Hydrating"
+              : "Paused • Click for Fullscreen"}
+          </p>
+        </div>
 
-          <div className="hidden sm:block text-zinc-500">Go with Flow</div>
+        {/* Controls */}
+        <div className="flex items-center gap-3 mt-6 z-10 flex-wrap justify-center">
+          <button
+            onClick={handleToggleTimer}
+            className={`h-12 px-6 rounded-xl font-mono text-xs font-bold tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+              isRunning
+                ? "bg-zinc-900 border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+                : mode === "focus"
+                  ? "bg-emerald-500 text-black hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+                  : "bg-cyan-500 text-black hover:bg-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+            }`}
+          >
+            {isRunning ? (
+              <>
+                <Pause className="w-4 h-4 fill-current" /> PAUSE
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4 fill-current" /> START SPRINT
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={() => resetTimer(mode)}
+            className="h-12 w-12 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center transition cursor-pointer"
+            title="Reset Timer"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Helper */}
+        <div className="mt-4 text-[10px] font-mono text-zinc-600 hidden sm:flex items-center gap-2">
+          <span className="flex items-center gap-1">
+            <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
+              Space
+            </kbd>{" "}
+            play/pause
+          </span>
+          <span>•</span>
+          <span className="flex items-center gap-1">
+            <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
+              F
+            </kbd>{" "}
+            fullscreen
+          </span>
+          <span>•</span>
+          <span className="flex items-center gap-1">
+            <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
+              M
+            </kbd>{" "}
+            focus audio
+          </span>
         </div>
 
         {renderMusicModal()}
         {renderCustomMinsModal()}
       </div>
-    );
-  }
-
-  // If not inline and not fullscreen, just render audio
-  if (!showInline) {
-    return renderPersistentAudio();
-  }
-
-  // STANDARD INLINE CARD MODE
-  return (
-    <div className="relative overflow-hidden bg-black border border-zinc-800/80 rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center">
-      {renderPersistentAudio()}
-
-      {/* Ambience */}
-      <div
-        className={`absolute inset-0 pointer-events-none transition-opacity duration-500 ${
-          mode === "focus"
-            ? "bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.05)_0,transparent_70%)]"
-            : mode === "short_break"
-              ? "bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.05)_0,transparent_70%)]"
-              : "bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.05)_0,transparent_70%)]"
-        }`}
-      />
-
-      {/* Card Header */}
-      <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 mb-6 z-10">
-        <div className="flex items-center gap-1 sm:gap-2 bg-zinc-950 p-1 rounded-xl border border-zinc-800 flex-wrap">
-          <button
-            onClick={() => switchMode("focus")}
-            className={`text-xs font-mono px-3 sm:px-4 py-1.5 rounded-lg transition-all cursor-pointer ${
-              mode === "focus"
-                ? "bg-zinc-800 text-emerald-400 font-bold shadow-sm"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
-          >
-            FOCUS ({customFocusMins}M)
-          </button>
-          <button
-            onClick={() => switchMode("short_break")}
-            className={`text-xs font-mono px-3 sm:px-4 py-1.5 rounded-lg transition-all cursor-pointer ${
-              mode === "short_break"
-                ? "bg-zinc-800 text-cyan-400 font-bold shadow-sm"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
-          >
-            SHORT (5M)
-          </button>
-          <button
-            onClick={() => switchMode("long_break")}
-            className={`text-xs font-mono px-3 sm:px-4 py-1.5 rounded-lg transition-all cursor-pointer ${
-              mode === "long_break"
-                ? "bg-zinc-800 text-purple-400 font-bold shadow-sm"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
-          >
-            LONG (15M)
-          </button>
-          <button
-            onClick={() => setShowCustomMinsInput(true)}
-            className="text-[11px] font-mono px-2 py-1 rounded-lg border border-dashed border-zinc-700 text-zinc-400 hover:text-emerald-400 transition cursor-pointer"
-            title="Custom duration"
-          >
-            ⚙ CUSTOM
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowMusicMenu(true)}
-            className={`p-2 rounded-xl border text-xs font-mono transition cursor-pointer ${
-              musicPlaying
-                ? "bg-emerald-950/80 border-emerald-500 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]"
-                : "bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-200"
-            }`}
-            title="Focus Audio (M)"
-          >
-            <Music
-              className={`w-3.5 h-3.5 ${musicPlaying ? "animate-spin" : ""}`}
-            />
-          </button>
-
-          <button
-            onClick={handleVolumeButtonClick}
-            className={`p-2 rounded-xl border transition cursor-pointer ${
-              musicPlaying
-                ? musicVolume === 0
-                  ? "bg-rose-950/60 border-rose-800 text-rose-400"
-                  : "bg-emerald-950/60 border-emerald-800 text-emerald-400"
-                : "bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200"
-            }`}
-            title={
-              musicPlaying
-                ? musicVolume === 0
-                  ? "Unmute Focus Audio"
-                  : `Focus Audio: ${Math.round(musicVolume * 100)}% (Click to Mute)`
-                : soundEnabled
-                  ? "Mute Timer Chimes"
-                  : "Enable Timer Chimes"
-            }
-          >
-            {musicPlaying ? (
-              musicVolume === 0 ? (
-                <VolumeX className="w-3.5 h-3.5 text-rose-400" />
-              ) : (
-                <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-              )
-            ) : soundEnabled ? (
-              <Volume2 className="w-3.5 h-3.5" />
-            ) : (
-              <VolumeX className="w-3.5 h-3.5" />
-            )}
-          </button>
-
-          <button
-            onClick={enterFullscreen}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/40 hover:bg-emerald-950/70 border border-emerald-800/70 hover:border-emerald-600 text-emerald-400 text-xs font-mono font-bold transition cursor-pointer shadow-[0_0_15px_rgba(16,185,129,0.15)]"
-            title="Enter Fullscreen (F)"
-          >
-            <Maximize2 className="w-3.5 h-3.5" />
-            <span>Fullscreen</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Clock Display */}
-      <div
-        onClick={enterFullscreen}
-        className="my-2 z-10 text-center cursor-pointer group"
-        title="Click for Fullscreen Zen Mode"
-      >
-        <div className="text-6xl sm:text-7xl md:text-8xl font-black font-mono tracking-tighter text-white tabular-nums select-none drop-shadow-[0_0_25px_rgba(255,255,255,0.06)] group-hover:scale-[1.02] transition-transform">
-          {formatTime(timeLeft)}
-        </div>
-        <p className="text-[11px] font-mono tracking-widest text-zinc-500 uppercase mt-2 group-hover:text-emerald-400 transition-colors">
-          {isRunning
-            ? mode === "focus"
-              ? "Deep Work Sprint • In The Flow"
-              : "Resting & Hydrating"
-            : "Paused • Click for Fullscreen"}
-        </p>
-      </div>
-
-      {/* Controls */}
-      <div className="flex items-center gap-3 mt-6 z-10 flex-wrap justify-center">
-        <button
-          onClick={handleToggleTimer}
-          className={`h-12 px-6 rounded-xl font-mono text-xs font-bold tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
-            isRunning
-              ? "bg-zinc-900 border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
-              : mode === "focus"
-                ? "bg-emerald-500 text-black hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)]"
-                : "bg-cyan-500 text-black hover:bg-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.3)]"
-          }`}
-        >
-          {isRunning ? (
-            <>
-              <Pause className="w-4 h-4 fill-current" /> PAUSE
-            </>
-          ) : (
-            <>
-              <Play className="w-4 h-4 fill-current" /> START SPRINT
-            </>
-          )}
-        </button>
-
-        <button
-          onClick={() => resetTimer(mode)}
-          className="h-12 w-12 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center transition cursor-pointer"
-          title="Reset Timer"
-        >
-          <RotateCcw className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Helper */}
-      <div className="mt-4 text-[10px] font-mono text-zinc-600 flex items-center gap-2">
-        <span className="flex items-center gap-1">
-          <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
-            Space
-          </kbd>{" "}
-          play/pause
-        </span>
-        <span>•</span>
-        <span className="flex items-center gap-1">
-          <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
-            F
-          </kbd>{" "}
-          fullscreen
-        </span>
-        <span>•</span>
-        <span className="flex items-center gap-1">
-          <kbd className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-400">
-            M
-          </kbd>{" "}
-          focus audio
-        </span>
-      </div>
-
-
-      {renderMusicModal()}
-      {renderCustomMinsModal()}
-    </div>
+    </>
   );
 }
