@@ -107,13 +107,6 @@ go-with-flow/
 
 ## Deploying to Vercel
 
-Deploying to Vercel is free and takes about two minutes:
-
-1. Push this repository to GitHub.
-2. Go to [vercel.com](https://vercel.com) and import the repository.
-3. Keep the Root Directory as default (or set to `frontend`).
-4. Click **Deploy**.
-
 Because the application is serverless, there are no databases to provision or backend servers to manage.
 
 ---
