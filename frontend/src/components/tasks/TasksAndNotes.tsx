@@ -9,13 +9,10 @@ import {
   Pin,
   Search,
   Calendar,
-  AlertCircle,
   Copy,
   Check,
-  Flame,
   Tag,
   ArrowUpRight,
-  Filter,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import CalendarPicker from "@/components/ui/CalendarPicker";

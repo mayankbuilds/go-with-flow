@@ -8,7 +8,6 @@ import {
   Search,
   X,
   Check,
-  ExternalLink,
   Code2,
 } from "lucide-react";
 import { CodingLog } from "@/types";

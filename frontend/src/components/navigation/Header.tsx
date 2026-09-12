@@ -1,7 +1,7 @@
 "use client";
 
 import { Terminal, Flame, Timer } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { UserStats } from "@/types";
 import { applyTheme, getInitialTheme, AccentColor } from "@/lib/theme";
 
@@ -20,17 +20,14 @@ export default function Header({
   onOpenPomodoro,
   timerInfo,
 }: HeaderProps) {
-  const [accent, setAccent] = useState<AccentColor>("emerald");
-
   useEffect(() => {
     const init = getInitialTheme();
-    setAccent(init.accent);
     applyTheme("dark", init.accent);
 
     const handler = (e: Event) => {
       const custom = e as CustomEvent<{ accent: AccentColor }>;
       if (custom.detail) {
-        setAccent(custom.detail.accent);
+        applyTheme("dark", custom.detail.accent);
       }
     };
     window.addEventListener("streakflow-theme-changed", handler);
