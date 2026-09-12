@@ -267,17 +267,31 @@ export const api = {
         localLogs.map((l) => l.problem_title.toLowerCase()),
       );
       let syncedCount = 0;
+      let updatedCount = 0;
       const newLogs: CodingLog[] = [];
 
       data.recent_submissions?.forEach(
         (sub: {
           title: string;
           slug: string;
+          difficulty?: string;
           timestamp: number;
           url: string;
         }) => {
-          if (!existingTitles.has(sub.title.toLowerCase())) {
-            existingTitles.add(sub.title.toLowerCase());
+          const diff = sub.difficulty || "Medium";
+          const titleLower = sub.title.toLowerCase();
+
+          // If already exists, update its difficulty to the accurate one
+          const existing = localLogs.find(
+            (l) => l.problem_title.toLowerCase() === titleLower,
+          );
+          if (existing) {
+            if (existing.difficulty !== diff) {
+              existing.difficulty = diff;
+              updatedCount++;
+            }
+          } else if (!existingTitles.has(titleLower)) {
+            existingTitles.add(titleLower);
             syncedCount++;
             const d = sub.timestamp
               ? new Date(sub.timestamp * 1000)
@@ -286,7 +300,7 @@ export const api = {
               id: Date.now() + Math.random(),
               problem_title: sub.title,
               platform: "LeetCode",
-              difficulty: "Medium",
+              difficulty: diff,
               topic_tag: "LeetCode Sync",
               problem_url: sub.url,
               solved_at: d.toISOString().slice(0, 10),
@@ -296,19 +310,21 @@ export const api = {
         },
       );
 
-      if (newLogs.length > 0) {
+      if (newLogs.length > 0 || updatedCount > 0) {
         setLocal("streakflow_logs", [...newLogs, ...localLogs]);
-        const stats = getLocal<UserStats>("streakflow_user_stats", {
-          id: 1,
-          xp: 100,
-          level: 1,
-          current_streak_days: 1,
-          longest_streak_days: 1,
-          last_active_date: new Date().toISOString().slice(0, 10),
-        });
-        stats.xp += syncedCount * 30;
-        stats.level = Math.floor(stats.xp / 300) + 1;
-        setLocal("streakflow_user_stats", stats);
+        if (newLogs.length > 0) {
+          const stats = getLocal<UserStats>("streakflow_user_stats", {
+            id: 1,
+            xp: 100,
+            level: 1,
+            current_streak_days: 1,
+            longest_streak_days: 1,
+            last_active_date: new Date().toISOString().slice(0, 10),
+          });
+          stats.xp += syncedCount * 30;
+          stats.level = Math.floor(stats.xp / 300) + 1;
+          setLocal("streakflow_user_stats", stats);
+        }
         if (typeof window !== "undefined") {
           window.dispatchEvent(new Event("streakflow-stats-updated"));
         }

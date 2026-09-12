@@ -29,7 +29,9 @@ export interface YouTubePlayer {
   getVolume: () => number;
   mute: () => void;
   unMute: () => void;
-  loadVideoById?: (videoId: string | { videoId: string; startSeconds?: number }) => void;
+  loadVideoById?: (
+    videoId: string | { videoId: string; startSeconds?: number },
+  ) => void;
   destroy: () => void;
   getPlayerState: () => number;
 }
@@ -49,7 +51,7 @@ export interface YouTubePlayerOptions {
 export interface YouTubeNamespace {
   Player: new (
     elementId: string | HTMLElement,
-    options: YouTubePlayerOptions
+    options: YouTubePlayerOptions,
   ) => YouTubePlayer;
 }
 
@@ -619,7 +621,10 @@ export default function PomodoroTimer({
                   event.target.playVideo();
                 } catch {}
               },
-              onStateChange: (event: { data: number; target: YouTubePlayer }) => {
+              onStateChange: (event: {
+                data: number;
+                target: YouTubePlayer;
+              }) => {
                 // 0 = YT.PlayerState.ENDED: Immediately loop without stopping
                 if (event.data === 0) {
                   try {
@@ -1478,7 +1483,7 @@ export default function PomodoroTimer({
           <div className="relative z-10 flex flex-col items-center justify-center my-auto w-full max-w-4xl mx-auto text-center px-2">
             {/* Mode Switcher */}
             <div
-              className={`flex items-center gap-1 sm:gap-2 mb-6 sm:mb-10 bg-zinc-950/80 p-1 sm:p-1.5 rounded-2xl border border-zinc-800 max-w-full overflow-x-auto scrollbar-none transition-all duration-700 ${
+              className={`grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-2 mb-6 sm:mb-10 bg-zinc-950/80 p-2 sm:p-1.5 rounded-2xl border border-zinc-800 w-full max-w-xs sm:max-w-none transition-all duration-700 ${
                 isIdle && isRunning
                   ? "opacity-0 pointer-events-none -translate-y-4"
                   : "opacity-100 translate-y-0"
@@ -1486,7 +1491,7 @@ export default function PomodoroTimer({
             >
               <button
                 onClick={() => switchMode("focus")}
-                className={`text-xs sm:text-sm font-mono px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                className={`text-xs sm:text-sm font-mono px-3 sm:px-5 py-2.5 sm:py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap text-center ${
                   mode === "focus"
                     ? "bg-zinc-800 text-emerald-400 font-bold shadow-sm border border-zinc-700"
                     : "text-zinc-400 hover:text-zinc-200"
@@ -1496,7 +1501,7 @@ export default function PomodoroTimer({
               </button>
               <button
                 onClick={() => switchMode("short_break")}
-                className={`text-xs sm:text-sm font-mono px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                className={`text-xs sm:text-sm font-mono px-3 sm:px-5 py-2.5 sm:py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap text-center ${
                   mode === "short_break"
                     ? "bg-zinc-800 text-cyan-400 font-bold shadow-sm border border-zinc-700"
                     : "text-zinc-400 hover:text-zinc-200"
@@ -1506,7 +1511,7 @@ export default function PomodoroTimer({
               </button>
               <button
                 onClick={() => switchMode("long_break")}
-                className={`text-xs sm:text-sm font-mono px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                className={`text-xs sm:text-sm font-mono px-3 sm:px-5 py-2.5 sm:py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap text-center ${
                   mode === "long_break"
                     ? "bg-zinc-800 text-purple-400 font-bold shadow-sm border border-zinc-700"
                     : "text-zinc-400 hover:text-zinc-200"
@@ -1516,7 +1521,7 @@ export default function PomodoroTimer({
               </button>
               <button
                 onClick={() => setShowCustomMinsInput(true)}
-                className="text-xs font-mono px-2.5 py-1.5 rounded-xl border border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200"
+                className="text-xs sm:text-sm font-mono px-3 sm:px-4 py-2.5 sm:py-2 rounded-xl border border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200 whitespace-nowrap text-center flex items-center justify-center gap-1"
                 title="Set Custom Focus Time"
               >
                 ⚙ CUSTOM
@@ -1661,10 +1666,10 @@ export default function PomodoroTimer({
 
         {/* Card Header */}
         <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 mb-6 z-10">
-          <div className="flex items-center gap-1 bg-zinc-950/90 p-1 rounded-xl border border-zinc-800/80 max-w-full overflow-x-auto scrollbar-none justify-center w-full sm:w-auto">
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 sm:gap-1 bg-zinc-950/90 p-1.5 sm:p-1 rounded-xl border border-zinc-800/80 w-full sm:w-auto">
             <button
               onClick={() => switchMode("focus")}
-              className={`text-xs font-mono px-3 sm:px-4 py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+              className={`text-xs font-mono px-3 sm:px-4 py-2 sm:py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer text-center ${
                 mode === "focus"
                   ? "bg-zinc-800 text-emerald-400 font-bold shadow-sm"
                   : "text-zinc-500 hover:text-zinc-300"
@@ -1674,7 +1679,7 @@ export default function PomodoroTimer({
             </button>
             <button
               onClick={() => switchMode("short_break")}
-              className={`text-xs font-mono px-3 sm:px-4 py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+              className={`text-xs font-mono px-3 sm:px-4 py-2 sm:py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer text-center ${
                 mode === "short_break"
                   ? "bg-zinc-800 text-cyan-400 font-bold shadow-sm"
                   : "text-zinc-500 hover:text-zinc-300"
@@ -1684,7 +1689,7 @@ export default function PomodoroTimer({
             </button>
             <button
               onClick={() => switchMode("long_break")}
-              className={`text-xs font-mono px-3 sm:px-4 py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+              className={`text-xs font-mono px-3 sm:px-4 py-2 sm:py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer text-center ${
                 mode === "long_break"
                   ? "bg-zinc-800 text-purple-400 font-bold shadow-sm"
                   : "text-zinc-500 hover:text-zinc-300"
@@ -1694,7 +1699,7 @@ export default function PomodoroTimer({
             </button>
             <button
               onClick={() => setShowCustomMinsInput(true)}
-              className="text-[11px] font-mono px-2 py-1 rounded-lg border border-dashed border-zinc-700 text-zinc-400 hover:text-emerald-400 whitespace-nowrap transition cursor-pointer"
+              className="text-xs font-mono px-2 py-2 sm:py-1.5 rounded-lg border border-dashed border-zinc-700 text-zinc-400 hover:text-emerald-400 whitespace-nowrap transition cursor-pointer text-center flex items-center justify-center gap-1"
               title="Custom duration"
             >
               ⚙ CUSTOM

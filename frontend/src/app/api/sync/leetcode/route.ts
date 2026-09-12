@@ -78,6 +78,54 @@ export async function GET(request: NextRequest) {
     const ranking = matchedUser.profile?.ranking;
     const recentSubs = data?.data?.recentAcSubmissionList || [];
 
+    // Fetch actual difficulty for each recent submission in parallel
+    const diffQuery = `
+      query questionDifficulty($titleSlug: String!) {
+        question(titleSlug: $titleSlug) {
+          difficulty
+        }
+      }
+    `;
+
+    const recentWithDifficulty = await Promise.all(
+      recentSubs.map(
+        async (sub: { title: string; titleSlug: string; timestamp: string }) => {
+          let difficulty = "Medium";
+          try {
+            const qRes = await fetch("https://leetcode.com/graphql", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Referer: "https://leetcode.com",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+              },
+              body: JSON.stringify({
+                query: diffQuery,
+                variables: { titleSlug: sub.titleSlug },
+              }),
+              next: { revalidate: 86400 },
+            });
+            if (qRes.ok) {
+              const qData = await qRes.json();
+              if (qData?.data?.question?.difficulty) {
+                difficulty = qData.data.question.difficulty;
+              }
+            }
+          } catch {
+            // Fallback to Medium if single question query fails
+          }
+
+          return {
+            title: sub.title,
+            slug: sub.titleSlug,
+            difficulty,
+            timestamp: parseInt(sub.timestamp, 10),
+            url: `https://leetcode.com/problems/${sub.titleSlug}`,
+          };
+        },
+      ),
+    );
+
     return NextResponse.json({
       platform: "LeetCode",
       handle: username,
@@ -86,14 +134,7 @@ export async function GET(request: NextRequest) {
       medium_solved: acCounts["Medium"] || 0,
       hard_solved: acCounts["Hard"] || 0,
       rank: ranking ? `Rank #${ranking.toLocaleString()}` : null,
-      recent_submissions: recentSubs.map(
-        (sub: { title: string; titleSlug: string; timestamp: string }) => ({
-          title: sub.title,
-          slug: sub.titleSlug,
-          timestamp: parseInt(sub.timestamp, 10),
-          url: `https://leetcode.com/problems/${sub.titleSlug}`,
-        }),
-      ),
+      recent_submissions: recentWithDifficulty,
       message: `Synced LeetCode profile for ${username}. Total solved: ${acCounts["All"] || 0}`,
     });
   } catch (err: unknown) {

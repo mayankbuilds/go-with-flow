@@ -48,7 +48,12 @@ export default function CalendarPicker({
   const selectedDate = useMemo(() => {
     if (!value) return null;
     const parts = value.split("-").map(Number);
-    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+    if (
+      parts.length === 3 &&
+      !isNaN(parts[0]) &&
+      !isNaN(parts[1]) &&
+      !isNaN(parts[2])
+    ) {
       return new Date(parts[0], parts[1] - 1, parts[2]);
     }
     return null;
@@ -104,11 +109,7 @@ export default function CalendarPicker({
 
   const todayStr = useMemo(() => {
     const today = new Date();
-    return toDateString(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate(),
-    );
+    return toDateString(today.getFullYear(), today.getMonth(), today.getDate());
   }, []);
 
   const displayLabel = useMemo(() => {
@@ -358,4 +359,3 @@ export default function CalendarPicker({
     </div>
   );
 }
-

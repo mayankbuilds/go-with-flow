@@ -64,14 +64,33 @@ export default function AchievementsView({
   // LeetCode Sync State
   const [lcUsername, setLcUsername] = useState("");
   const [syncingLc, setSyncingLc] = useState(false);
-  const [lcResult, setLcResult] = useState<CodingSyncResult | null>(null);
+  const [lcResult, setLcResult] = useState<CodingSyncResult | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("streakflow_lc_result");
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return null;
+  });
   const [lcError, setLcError] = useState<string | null>(null);
 
   // Codeforces Sync State
   const [cfHandle, setCfHandle] = useState("");
   const [syncingCf, setSyncingCf] = useState(false);
-  const [cfResult, setCfResult] = useState<CodingSyncResult | null>(null);
+  const [cfResult, setCfResult] = useState<CodingSyncResult | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("streakflow_cf_result");
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return null;
+  });
   const [cfError, setCfError] = useState<string | null>(null);
+
+  // Breakdown View Mode: "logged" (Arena Logs) vs "profiles" (Live Profiles)
+  const [breakdownView, setBreakdownView] = useState<"logged" | "profiles">("logged");
 
   // Badge Celebration Modal State
   const [celebratingBadge, setCelebratingBadge] = useState<BadgeItem | null>(
@@ -125,6 +144,9 @@ export default function AchievementsView({
           .syncLeetCode(savedLc)
           .then((res) => {
             setLcResult(res);
+            if (typeof window !== "undefined") {
+              localStorage.setItem("streakflow_lc_result", JSON.stringify(res));
+            }
             loadStatsData();
           })
           .catch((err) => {
@@ -138,6 +160,9 @@ export default function AchievementsView({
           .syncCodeforces(savedCf)
           .then((res) => {
             setCfResult(res);
+            if (typeof window !== "undefined") {
+              localStorage.setItem("streakflow_cf_result", JSON.stringify(res));
+            }
             loadStatsData();
           })
           .catch((err) => {
@@ -227,7 +252,6 @@ export default function AchievementsView({
     };
   }, []);
 
-
   const handleSyncLeetCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!lcUsername.trim()) return;
@@ -238,6 +262,7 @@ export default function AchievementsView({
       setLcResult(res);
       if (typeof window !== "undefined") {
         localStorage.setItem("streakflow_lc_handle", lcUsername.trim());
+        localStorage.setItem("streakflow_lc_result", JSON.stringify(res));
         window.dispatchEvent(
           new CustomEvent("streakflow-handles-updated", {
             detail: { lcHandle: lcUsername.trim() },
@@ -266,6 +291,7 @@ export default function AchievementsView({
       setCfResult(res);
       if (typeof window !== "undefined") {
         localStorage.setItem("streakflow_cf_handle", cfHandle.trim());
+        localStorage.setItem("streakflow_cf_result", JSON.stringify(res));
         window.dispatchEvent(
           new CustomEvent("streakflow-handles-updated", {
             detail: { cfHandle: cfHandle.trim() },
@@ -486,54 +512,118 @@ export default function AchievementsView({
     },
   ];
 
-  // Guaranteed Difficulty Breakdown with non-disappearing Hard tier
-  const difficulties = useMemo(() => {
-    const rawBreakdown = codingAnalytics?.difficulty_breakdown || [];
-    const easyItem = rawBreakdown.find((d) => d.difficulty === "Easy");
-    const mediumItem = rawBreakdown.find((d) => d.difficulty === "Medium");
-    const hardItem = rawBreakdown.find((d) => d.difficulty === "Hard");
+  // Compute Logged Problems Breakdown (from user's timetable/arena logs)
+  const loggedTotal = codingAnalytics?.total_solved ?? totalSolved;
 
-    const easyCount = easyItem?.count || 0;
+  const loggedDifficulties = useMemo(() => {
+    const rawBreakdown = codingAnalytics?.difficulty_breakdown || [];
+    const easyCount =
+      rawBreakdown.find((d) => d.difficulty === "Easy")?.count || 0;
     const mediumCount =
-      mediumItem?.count ||
-      (totalSolved > 0 && !easyItem && !hardItem ? totalSolved : 0);
-    const hardCount = hardItem?.count || 0;
+      rawBreakdown.find((d) => d.difficulty === "Medium")?.count || 0;
+    const hardCount =
+      rawBreakdown.find((d) => d.difficulty === "Hard")?.count || 0;
+    const sum = easyCount + mediumCount + hardCount || 1;
 
     return [
       {
         difficulty: "Easy",
         count: easyCount,
         color: "#10b981",
-        pct: totalSolved > 0 ? Math.round((easyCount / totalSolved) * 100) : 0,
+        pct: easyCount > 0 ? Math.round((easyCount / sum) * 100) : 0,
       },
       {
         difficulty: "Medium",
         count: mediumCount,
         color: "#f59e0b",
-        pct:
-          totalSolved > 0 ? Math.round((mediumCount / totalSolved) * 100) : 0,
+        pct: mediumCount > 0 ? Math.round((mediumCount / sum) * 100) : 0,
       },
       {
         difficulty: "Hard",
         count: hardCount,
         color: "#ef4444",
-        pct: totalSolved > 0 ? Math.round((hardCount / totalSolved) * 100) : 0,
+        pct: hardCount > 0 ? Math.round((hardCount / sum) * 100) : 0,
       },
     ];
-  }, [codingAnalytics, totalSolved]);
+  }, [codingAnalytics]);
 
-  // Platform Breakdown
-  const leetcodeCount =
-    codingAnalytics?.platform_breakdown.find((p) => p.platform === "LeetCode")
-      ?.count ||
-    lcResult?.total_solved ||
-    0;
+  const loggedPlatforms = useMemo(() => {
+    const pb = codingAnalytics?.platform_breakdown || [];
+    const lc = pb.find((p) => p.platform === "LeetCode")?.count || 0;
+    const cf = pb.find((p) => p.platform === "Codeforces")?.count || 0;
+    const others = pb
+      .filter((p) => p.platform !== "LeetCode" && p.platform !== "Codeforces")
+      .reduce((acc, curr) => acc + curr.count, 0);
+    const sum = lc + cf + others || 1;
 
-  const codeforcesCount =
-    codingAnalytics?.platform_breakdown.find((p) => p.platform === "Codeforces")
-      ?.count ||
-    cfResult?.total_solved ||
-    0;
+    return {
+      leetcode: {
+        count: lc,
+        pct: lc > 0 ? Math.round((lc / sum) * 100) : 0,
+      },
+      codeforces: {
+        count: cf,
+        pct: cf > 0 ? Math.round((cf / sum) * 100) : 0,
+      },
+      others: {
+        count: others,
+        pct: others > 0 ? Math.round((others / sum) * 100) : 0,
+      },
+      total: lc + cf + others,
+    };
+  }, [codingAnalytics]);
+
+  // Compute Connected Profiles Breakdown (direct from LeetCode & Codeforces APIs)
+  const profileTotal =
+    (lcResult?.total_solved || 0) + (cfResult?.total_solved || 0);
+
+  const profileDifficulties = useMemo(() => {
+    const easyCount =
+      (lcResult?.easy_solved || 0) + (cfResult?.easy_solved || 0);
+    const mediumCount =
+      (lcResult?.medium_solved || 0) + (cfResult?.medium_solved || 0);
+    const hardCount =
+      (lcResult?.hard_solved || 0) + (cfResult?.hard_solved || 0);
+    const sum = easyCount + mediumCount + hardCount || 1;
+
+    return [
+      {
+        difficulty: "Easy",
+        count: easyCount,
+        color: "#10b981",
+        pct: easyCount > 0 ? Math.round((easyCount / sum) * 100) : 0,
+      },
+      {
+        difficulty: "Medium",
+        count: mediumCount,
+        color: "#f59e0b",
+        pct: mediumCount > 0 ? Math.round((mediumCount / sum) * 100) : 0,
+      },
+      {
+        difficulty: "Hard",
+        count: hardCount,
+        color: "#ef4444",
+        pct: hardCount > 0 ? Math.round((hardCount / sum) * 100) : 0,
+      },
+    ];
+  }, [lcResult, cfResult]);
+
+  const profilePlatforms = useMemo(() => {
+    const lc = lcResult?.total_solved || 0;
+    const cf = cfResult?.total_solved || 0;
+    const sum = lc + cf || 1;
+
+    return {
+      leetcode: {
+        count: lc,
+        pct: lc > 0 ? Math.round((lc / sum) * 100) : 0,
+      },
+      codeforces: {
+        count: cf,
+        pct: cf > 0 ? Math.round((cf / sum) * 100) : 0,
+      },
+    };
+  }, [lcResult, cfResult]);
 
   // Maximum minutes for the 7-day bar chart
   const maxFocusMinutes = Math.max(
@@ -903,90 +993,259 @@ export default function AchievementsView({
           </div>
         </div>
 
-        {/* CHART 2: Standalone Platform & Guaranteed Difficulty Breakdown */}
+        {/* CHART 2: Symmetrical Platform & Difficulty Breakdown with Dual View */}
         <div className="md:col-span-6 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 flex flex-col justify-between space-y-4">
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-200 flex items-center gap-2">
-              <BarChart2 className="w-4 h-4 text-purple-400" /> Platform &
-              Difficulty Breakdown
-            </h3>
-            <p className="text-[11px] text-zinc-500 mt-0.5">
-              Verified problem distribution across platforms
-            </p>
-          </div>
-
-          {/* Standalone Platform Cards (No Awkward 2-Way Split) */}
-          <div className="grid grid-cols-2 gap-2.5">
-            <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl space-y-1">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-amber-400 font-bold flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-400" />{" "}
-                  LeetCode
-                </span>
-                <span className="text-zinc-400 font-black">
-                  {leetcodeCount}
-                </span>
-              </div>
-              <p className="text-[10px] text-zinc-500">
-                {totalSolved > 0
-                  ? Math.round((leetcodeCount / totalSolved) * 100)
-                  : 0}
-                % of problem pool
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-200 flex items-center gap-2">
+                <BarChart2 className="w-4 h-4 text-purple-400" /> Platform &
+                Difficulty Breakdown
+              </h3>
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                {breakdownView === "logged"
+                  ? "DSA problems logged in your daily arena & timetable"
+                  : "Lifetime solved count verified via platform public APIs"}
               </p>
             </div>
 
-            <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl space-y-1">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-blue-400 font-bold flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-blue-400" />{" "}
-                  Codeforces
-                </span>
-                <span className="text-zinc-400 font-black">
-                  {codeforcesCount}
-                </span>
-              </div>
-              <p className="text-[10px] text-zinc-500">
-                {cfResult?.rating
-                  ? `Rating: ${cfResult.rating}`
-                  : "Competitive Track"}
-              </p>
+            {/* View Switcher Pill */}
+            <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setBreakdownView("logged")}
+                className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  breakdownView === "logged"
+                    ? "bg-zinc-800 text-purple-300 shadow-sm border border-zinc-700/80"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                App Logs ({loggedTotal})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBreakdownView("profiles")}
+                className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  breakdownView === "profiles"
+                    ? "bg-zinc-800 text-cyan-300 shadow-sm border border-zinc-700/80"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                Profiles ({profileTotal})
+              </button>
             </div>
           </div>
 
-          {/* All 3 Difficulty Tiers (Guaranteed Easy, Medium, Hard) */}
-          <div className="pt-2 border-t border-zinc-800/80 space-y-2">
-            <span className="text-[10px] text-zinc-400 uppercase font-bold block">
-              Difficulty Tiers (All Solved Problems)
-            </span>
-            <div className="grid grid-cols-3 gap-2">
-              {difficulties.map((d) => (
-                <div
-                  key={d.difficulty}
-                  className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-center"
-                >
-                  <span
-                    className="block font-bold text-[11px]"
-                    style={{ color: d.color }}
-                  >
-                    {d.difficulty}
+          {/* VIEW A: LOGGED IN APP */}
+          {breakdownView === "logged" ? (
+            <>
+              {/* Symmetrical Platform Cards */}
+              <div className="grid grid-cols-2 gap-2.5">
+                {/* LeetCode Card */}
+                <div className="p-3 bg-zinc-950 border border-zinc-800/90 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-amber-400 font-bold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.5)]" />{" "}
+                      LeetCode
+                    </span>
+                    <span className="text-zinc-200 font-mono font-black text-sm">
+                      {loggedPlatforms.leetcode.count}
+                    </span>
+                  </div>
+                  <div className="w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-amber-400 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${loggedPlatforms.leetcode.pct}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono">
+                    <span>{loggedPlatforms.leetcode.pct}% of pool</span>
+                    <span>Arena Log</span>
+                  </div>
+                </div>
+
+                {/* Codeforces Card */}
+                <div className="p-3 bg-zinc-950 border border-zinc-800/90 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-blue-400 font-bold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-blue-400 shadow-[0_0_6px_rgba(59,130,246,0.5)]" />{" "}
+                      Codeforces
+                    </span>
+                    <span className="text-zinc-200 font-mono font-black text-sm">
+                      {loggedPlatforms.codeforces.count}
+                    </span>
+                  </div>
+                  <div className="w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-blue-400 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${loggedPlatforms.codeforces.pct}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono">
+                    <span>{loggedPlatforms.codeforces.pct}% of pool</span>
+                    <span>Arena Log</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Difficulty Tiers */}
+              <div className="pt-2 border-t border-zinc-800/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">
+                    Difficulty Tiers (Logged Problems)
                   </span>
-                  <span className="text-sm text-zinc-100 font-black block mt-0.5">
-                    {d.count}
-                  </span>
-                  <span className="text-[9px] text-zinc-500 block">
-                    {d.pct}%
+                  <span className="text-[10px] text-zinc-500 font-mono">
+                    {loggedDifficulties.reduce((a, c) => a + c.count, 0)} classified
                   </span>
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {loggedDifficulties.map((d) => (
+                    <div
+                      key={d.difficulty}
+                      className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800/90 flex flex-col justify-between"
+                    >
+                      <span
+                        className="font-bold text-[11px] block"
+                        style={{ color: d.color }}
+                      >
+                        {d.difficulty}
+                      </span>
+                      <div className="my-1.5">
+                        <span className="text-base text-zinc-100 font-black font-mono block leading-none">
+                          {d.count}
+                        </span>
+                        <span className="text-[10px] text-zinc-500 font-mono">
+                          {d.pct}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-zinc-900 h-1 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${d.pct}%`,
+                            backgroundColor: d.color,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-          <div className="text-[10px] text-zinc-500 pt-2 border-t border-zinc-800 flex items-center justify-between">
-            <span>Aggregated across arena & syncs</span>
-            <span className="text-emerald-400 font-bold">
-              {totalSolved} total solved
-            </span>
-          </div>
+              <div className="text-[10px] text-zinc-500 pt-2 border-t border-zinc-800/80 flex items-center justify-between">
+                <span>Aggregated from timetable & manual arena logs</span>
+                <span className="text-emerald-400 font-mono font-bold">
+                  {loggedTotal} total logged
+                </span>
+              </div>
+            </>
+          ) : (
+            /* VIEW B: LIVE PROFILE STATS */
+            <>
+              {/* Symmetrical Profile Cards */}
+              <div className="grid grid-cols-2 gap-2.5">
+                {/* LeetCode Profile Card */}
+                <div className="p-3 bg-zinc-950 border border-zinc-800/90 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-amber-400 font-bold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.5)]" />{" "}
+                      LeetCode
+                    </span>
+                    <span className="text-zinc-200 font-mono font-black text-sm">
+                      {lcResult?.total_solved ?? 0}
+                    </span>
+                  </div>
+                  <div className="w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-amber-400 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${profilePlatforms.leetcode.pct}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono">
+                    <span>{profilePlatforms.leetcode.pct}% of profiles</span>
+                    <span className="text-zinc-400 truncate max-w-[90px]">
+                      {lcResult?.rank || (lcUsername ? `@${lcUsername}` : "Not synced")}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Codeforces Profile Card */}
+                <div className="p-3 bg-zinc-950 border border-zinc-800/90 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-blue-400 font-bold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-blue-400 shadow-[0_0_6px_rgba(59,130,246,0.5)]" />{" "}
+                      Codeforces
+                    </span>
+                    <span className="text-zinc-200 font-mono font-black text-sm">
+                      {cfResult?.total_solved ?? 0}
+                    </span>
+                  </div>
+                  <div className="w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-blue-400 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${profilePlatforms.codeforces.pct}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono">
+                    <span>{profilePlatforms.codeforces.pct}% of profiles</span>
+                    <span className="text-zinc-400 truncate max-w-[90px]">
+                      {cfResult?.rating ? `Rating ${cfResult.rating}` : (cfHandle ? `@${cfHandle}` : "Not synced")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Profile Difficulty Tiers */}
+              <div className="pt-2 border-t border-zinc-800/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">
+                    Difficulty Tiers (Combined Profiles)
+                  </span>
+                  <span className="text-[10px] text-zinc-500 font-mono">
+                    {profileDifficulties.reduce((a, c) => a + c.count, 0)} total solved
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {profileDifficulties.map((d) => (
+                    <div
+                      key={d.difficulty}
+                      className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800/90 flex flex-col justify-between"
+                    >
+                      <span
+                        className="font-bold text-[11px] block"
+                        style={{ color: d.color }}
+                      >
+                        {d.difficulty}
+                      </span>
+                      <div className="my-1.5">
+                        <span className="text-base text-zinc-100 font-black font-mono block leading-none">
+                          {d.count}
+                        </span>
+                        <span className="text-[10px] text-zinc-500 font-mono">
+                          {d.pct}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-zinc-900 h-1 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${d.pct}%`,
+                            backgroundColor: d.color,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-[10px] text-zinc-500 pt-2 border-t border-zinc-800/80 flex items-center justify-between">
+                <span>Verified via LeetCode & Codeforces Public APIs</span>
+                <span className="text-cyan-400 font-mono font-bold">
+                  {profileTotal} lifetime solved
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
