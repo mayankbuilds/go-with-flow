@@ -4,9 +4,13 @@ import { useState, useEffect } from "react";
 import confetti from "canvas-confetti";
 import {
   Terminal,
-  Target,
+  Timer,
+  CheckSquare,
   Award,
   Settings as SettingsIcon,
+  Clock,
+  FileText,
+  Layers,
 } from "lucide-react";
 import Header from "@/components/navigation/Header";
 import MobileNav, { NavTab } from "@/components/navigation/MobileNav";
@@ -17,7 +21,9 @@ import FocusSection from "@/components/focus/FocusSection";
 import RoutineSection from "@/components/routine/RoutineSection";
 import AchievementsView from "@/components/stats/AchievementsView";
 import SettingsView from "@/components/settings/SettingsView";
+import TasksAndNotes from "@/components/tasks/TasksAndNotes";
 import { api } from "@/lib/api";
+import { driveSync } from "@/lib/driveSync";
 import PomodoroTimer from "@/components/focus/PomodoroTimer";
 import {
   CodingLog,
@@ -29,6 +35,9 @@ import {
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<NavTab>("arena");
+  const [tasksSubView, setTasksSubView] = useState<
+    "all" | "timetable" | "backlog"
+  >("all");
   const [stats, setStats] = useState<UserStats | null>(null);
   const [heatmapData, setHeatmapData] = useState<HeatmapDay[]>([]);
   const [recentLogs, setRecentLogs] = useState<CodingLog[]>([]);
@@ -46,6 +55,27 @@ export default function Home() {
 
   useEffect(() => {
     loadDashboard();
+
+    // Periodic Google Drive Auto-Sync every 5 minutes if authenticated
+    const autoSyncTimer = setInterval(
+      () => {
+        driveSync.triggerAutoSync();
+      },
+      5 * 60 * 1000,
+    );
+
+    const onDataChanged = () => {
+      driveSync.scheduleAutoSync(2500);
+    };
+
+    window.addEventListener("focus-session-completed", onDataChanged);
+    window.addEventListener("streakflow-stats-updated", onDataChanged);
+
+    return () => {
+      clearInterval(autoSyncTimer);
+      window.removeEventListener("focus-session-completed", onDataChanged);
+      window.removeEventListener("streakflow-stats-updated", onDataChanged);
+    };
   }, []);
 
   const handleSessionComplete = async () => {
@@ -55,14 +85,13 @@ export default function Home() {
     } catch (err) {
       console.error("Dashboard failed to load stats after pomodoro:", err);
     }
-    confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
   };
 
   const loadDashboard = async () => {
     try {
       const [s, h, l, f, r] = await Promise.all([
         api.getUserStats(),
-        api.getHeatmap(112),
+        api.getHeatmap(365),
         api.getRecentLogs(10),
         api.getTodayFocus(),
         api.getRoutines(),
@@ -85,7 +114,7 @@ export default function Home() {
   }) => {
     await api.logProblem(data);
     const [h, l, s] = await Promise.all([
-      api.getHeatmap(112),
+      api.getHeatmap(365),
       api.getRecentLogs(10),
       api.getUserStats(),
     ]);
@@ -115,6 +144,20 @@ export default function Home() {
   const handleDeleteFocus = async (id: number) => {
     await api.deleteFocusTask(id);
     setFocusTasks(await api.getTodayFocus());
+  };
+
+  const handlePromoteTaskToFocus = async (title: string) => {
+    const occupiedSlots = new Set(focusTasks.map((t) => t.priority_order));
+    let targetSlot = 1;
+    for (let s = 1; s <= 3; s++) {
+      if (!occupiedSlots.has(s)) {
+        targetSlot = s;
+        break;
+      }
+    }
+    await api.setFocusSlot({ priority_order: targetSlot, title });
+    setFocusTasks(await api.getTodayFocus());
+    confetti({ particleCount: 40, spread: 50, origin: { y: 0.7 } });
   };
 
   const handleToggleRoutine = async (id: number) => {
@@ -185,15 +228,19 @@ export default function Home() {
     <main className="max-w-7xl mx-auto px-4 py-8 pb-32">
       <Header
         stats={stats}
-        onOpenPomodoro={() => setIsPomodoroFullscreen(true)}
+        onOpenPomodoro={() => {
+          setActiveTab("focus");
+          setIsPomodoroFullscreen(true);
+        }}
         timerInfo={timerInfo}
       />
 
       {/* Desktop Navigation Tabs */}
-      <div className="hidden md:flex items-center gap-2 mb-8 border-b border-zinc-800 pb-3">
+      <div className="hidden md:flex items-center gap-2 mb-8 border-b border-zinc-800 pb-3 overflow-x-auto scrollbar-none">
         {[
           { id: "arena", label: "The Arena", icon: Terminal },
-          { id: "routine", label: "Focus & Routines", icon: Target },
+          { id: "focus", label: "Focus", icon: Timer },
+          { id: "tasks", label: "Tasks & Notes", icon: CheckSquare },
           { id: "stats", label: "Statistics", icon: Award },
           { id: "settings", label: "Settings", icon: SettingsIcon },
         ].map((t) => {
@@ -203,7 +250,7 @@ export default function Home() {
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id as NavTab)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-mono transition cursor-pointer ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-mono transition cursor-pointer whitespace-nowrap ${
                 isActive
                   ? "bg-zinc-800 text-emerald-400 font-bold border border-zinc-700"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
@@ -216,8 +263,9 @@ export default function Home() {
         })}
       </div>
 
-      {/* Dynamic Views (Persistent state across tab switches) */}
+      {/* Dynamic Views */}
       <div className="space-y-6">
+        {/* VIEW 1: THE ARENA */}
         <div
           className={
             activeTab === "arena"
@@ -239,26 +287,136 @@ export default function Home() {
           </div>
         </div>
 
-        <div className={activeTab === "routine" ? "space-y-6" : "hidden"}>
-          {/* Full width Pomodoro with Fullscreen Focus Mode */}
+        {/* VIEW 2: DEDICATED FOCUS ENGINE */}
+        <div
+          className={
+            activeTab === "focus"
+              ? "space-y-6 max-w-4xl mx-auto"
+              : isPomodoroFullscreen
+                ? "block"
+                : "hidden"
+          }
+        >
           <PomodoroTimer
             onSessionComplete={handleSessionComplete}
             isFullscreen={isPomodoroFullscreen}
             onToggleFullscreen={setIsPomodoroFullscreen}
             onTimerUpdate={setTimerInfo}
+            showInline={true}
           />
 
-          {/* Dual column focus & routine */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <div className="lg:col-span-6">
-              <FocusSection
-                tasks={focusTasks}
-                onSave={handleSaveFocus}
-                onToggle={handleToggleFocus}
-                onDelete={handleDeleteFocus}
-              />
+          {activeTab === "focus" && (
+            <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 font-mono text-xs text-zinc-400 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-950/60 border border-emerald-800 text-emerald-400 rounded-xl shrink-0">
+                  <Timer className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-zinc-200 font-bold block">
+                    Deep Work Flow State & Focus Audio
+                  </span>
+                  <span className="text-[11px] text-zinc-500">
+                    Use{" "}
+                    <kbd className="px-1.5 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-300">
+                      Space
+                    </kbd>{" "}
+                    to toggle,{" "}
+                    <kbd className="px-1.5 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-300">
+                      M
+                    </kbd>{" "}
+                    for Focus Audio, and{" "}
+                    <kbd className="px-1.5 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-300">
+                      F
+                    </kbd>{" "}
+                    for Zen Fullscreen
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsPomodoroFullscreen(true)}
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl transition cursor-pointer shrink-0"
+              >
+                Zen Fullscreen
+              </button>
             </div>
-            <div className="lg:col-span-6">
+          )}
+        </div>
+
+        {/* VIEW 3: UNIFIED TASKS & NOTES HUB (Rule-of-3 + Timetable Schedule + Task Backlog + Scratchpad) */}
+        <div className={activeTab === "tasks" ? "space-y-6" : "hidden"}>
+          {/* Top Mission: Rule-of-3 Daily Focus */}
+          <div className="max-w-4xl mx-auto">
+            <FocusSection
+              tasks={focusTasks}
+              onSave={handleSaveFocus}
+              onToggle={handleToggleFocus}
+              onDelete={handleDeleteFocus}
+            />
+          </div>
+
+          {/* Sub-View Switcher within Tasks & Notes */}
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-3 max-w-5xl mx-auto">
+            <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
+              <button
+                onClick={() => setTasksSubView("all")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
+                  tasksSubView === "all"
+                    ? "bg-zinc-800 text-emerald-400 font-bold border border-zinc-700"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>All-in-One</span>
+              </button>
+              <button
+                onClick={() => setTasksSubView("timetable")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
+                  tasksSubView === "timetable"
+                    ? "bg-zinc-800 text-cyan-400 font-bold border border-zinc-700"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Timetable Schedule</span>
+              </button>
+              <button
+                onClick={() => setTasksSubView("backlog")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
+                  tasksSubView === "backlog"
+                    ? "bg-zinc-800 text-purple-400 font-bold border border-zinc-700"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Tasks & Notes</span>
+              </button>
+            </div>
+            <span className="text-[11px] font-mono text-zinc-500 hidden sm:inline">
+              Rule of 3 • Scheduled Blocks • Backlog
+            </span>
+          </div>
+
+          {/* Content Views */}
+          {tasksSubView === "all" && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-7xl mx-auto">
+              <div className="lg:col-span-6">
+                <RoutineSection
+                  routines={routines}
+                  onToggle={handleToggleRoutine}
+                  onCreate={handleCreateRoutine}
+                  onUpdate={handleUpdateRoutine}
+                  onDelete={handleDeleteRoutine}
+                />
+              </div>
+              <div className="lg:col-span-6">
+                <TasksAndNotes onPromoteToFocus={handlePromoteTaskToFocus} />
+              </div>
+            </div>
+          )}
+
+          {tasksSubView === "timetable" && (
+            <div className="max-w-4xl mx-auto">
               <RoutineSection
                 routines={routines}
                 onToggle={handleToggleRoutine}
@@ -267,9 +425,16 @@ export default function Home() {
                 onDelete={handleDeleteRoutine}
               />
             </div>
-          </div>
+          )}
+
+          {tasksSubView === "backlog" && (
+            <div className="max-w-4xl mx-auto">
+              <TasksAndNotes onPromoteToFocus={handlePromoteTaskToFocus} />
+            </div>
+          )}
         </div>
 
+        {/* VIEW 4: STATISTICS & BADGES */}
         <div className={activeTab === "stats" ? "max-w-5xl mx-auto" : "hidden"}>
           <AchievementsView
             stats={stats}
@@ -278,6 +443,7 @@ export default function Home() {
           />
         </div>
 
+        {/* VIEW 5: SETTINGS & DRIVE CLOUD VAULT */}
         <div
           className={activeTab === "settings" ? "max-w-2xl mx-auto" : "hidden"}
         >

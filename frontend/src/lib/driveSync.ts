@@ -122,6 +122,107 @@ class GoogleDriveSync {
 
     return await res.json();
   }
+  // Check if active access token is present
+  isAuthenticated(): boolean {
+    return Boolean(this.accessToken);
+  }
+
+  // Fetch connected user info
+  async getUserEmail(): Promise<string | null> {
+    if (!this.accessToken) return null;
+    try {
+      const res = await fetch(
+        "https://www.googleapis.com/oauth2/v3/userinfo",
+        {
+          headers: { Authorization: `Bearer ${this.accessToken}` },
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        return data.email || null;
+      }
+    } catch {
+      // Fallback
+    }
+    return null;
+  }
+
+  // Collect full snapshot from local state
+  async createSnapshotPayload(): Promise<any> {
+    let localLogs = [];
+    let localFocus = [];
+    let localRoutines = [];
+    let localStats = null;
+    let localTasks = [];
+    let localNotes = [];
+
+    if (typeof window !== "undefined") {
+      try {
+        localLogs = JSON.parse(localStorage.getItem("streakflow_logs") || "[]");
+        localFocus = JSON.parse(localStorage.getItem("streakflow_focus") || "[]");
+        localRoutines = JSON.parse(
+          localStorage.getItem("streakflow_routines") || "[]"
+        );
+        localStats = JSON.parse(
+          localStorage.getItem("streakflow_user_stats") || "null"
+        );
+        localTasks = JSON.parse(
+          localStorage.getItem("streakflow_tasks") || "[]"
+        );
+        localNotes = JSON.parse(
+          localStorage.getItem("streakflow_notes") || "[]"
+        );
+      } catch (err) {
+        console.warn("Error reading local snapshot data:", err);
+      }
+    }
+
+    return {
+      synced_at: new Date().toISOString(),
+      version: "2.2.0",
+      data: {
+        logs: localLogs,
+        focus: localFocus,
+        routines: localRoutines,
+        stats: localStats,
+        tasks: localTasks,
+        notes: localNotes,
+      },
+    };
+  }
+
+  // Trigger background auto-sync if authenticated and enabled
+  async triggerAutoSync(): Promise<boolean> {
+    if (typeof window === "undefined") return false;
+    const isAutoSync =
+      localStorage.getItem("streakflow_drive_autosync") === "true";
+    if (!isAutoSync || !this.accessToken) return false;
+
+    try {
+      const payload = await this.createSnapshotPayload();
+      await this.uploadSnapshot(payload);
+      const now = new Date().toISOString();
+      localStorage.setItem("streakflow_drive_last_sync", now);
+      window.dispatchEvent(
+        new CustomEvent("streakflow-drive-synced", {
+          detail: { timestamp: now },
+        })
+      );
+      return true;
+    } catch (err) {
+      console.warn("Google Drive auto-sync error:", err);
+      return false;
+    }
+  }
+
+  // Debounced auto-sync scheduler
+  private autoSyncTimer: any = null;
+  scheduleAutoSync(delayMs: number = 3000) {
+    if (this.autoSyncTimer) clearTimeout(this.autoSyncTimer);
+    this.autoSyncTimer = setTimeout(() => {
+      this.triggerAutoSync();
+    }, delayMs);
+  }
 }
 
 export const driveSync = new GoogleDriveSync();

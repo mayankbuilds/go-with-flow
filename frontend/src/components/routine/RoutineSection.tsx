@@ -18,6 +18,7 @@ import {
   Flame,
 } from "lucide-react";
 import { StudentRoutine } from "@/types";
+import CalendarPicker from "@/components/ui/CalendarPicker";
 
 interface RoutineSectionProps {
   routines: StudentRoutine[];
@@ -143,7 +144,6 @@ export default function RoutineSection({
 
   const handleDeleteCategory = (catToDelete: string) => {
     if (categories.length <= 1) return;
-    if (!window.confirm(`Delete category "${catToDelete}"?`)) return;
     const updated = categories.filter((c) => c !== catToDelete);
     saveCategories(updated);
     if (cat === catToDelete) setCat(updated[0]);
@@ -215,9 +215,7 @@ export default function RoutineSection({
 
   const handleDeleteBlock = async (id: number) => {
     if (!onDelete) return;
-    if (window.confirm("Remove this routine block from your timetable?")) {
-      await onDelete(id);
-    }
+    await onDelete(id);
   };
 
   // Format date helper: "Today", "Tomorrow", or "Sep 15"
@@ -470,12 +468,11 @@ export default function RoutineSection({
             </div>
 
             {isDated && (
-              <div className="pl-6">
-                <input
-                  type="date"
+              <div className="pl-6 pt-1">
+                <CalendarPicker
                   value={scheduledDate}
-                  onChange={(e) => setScheduledDate(e.target.value)}
-                  className="bg-zinc-950 border border-zinc-800 text-zinc-200 px-3 py-1.5 text-xs rounded-xl focus:outline-none focus:border-cyan-500"
+                  onChange={setScheduledDate}
+                  placeholder="Select block date..."
                 />
               </div>
             )}

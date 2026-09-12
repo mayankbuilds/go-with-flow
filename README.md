@@ -1,36 +1,50 @@
-# GowithFlow 🌊
+# Go with Flow
 
-A local-first, privacy-focused developer command center and student routine architect built with FastAPI, Next.js, and Google Drive sync.
-
----
-
-## Overview
-
-**GowithFlow** is designed for student developers and engineers who prioritize high-tempo daily execution without centralized data tracking. Your operational routines, Rule-of-3 non-negotiables, and coding submissions reside entirely on your local device, with optional encrypted snapshot backups synced directly to your personal Google Drive (`appDataFolder`).
+A local-first productivity tracker and daily command center for developers and students.
 
 ---
 
-## Core Features
+## Why I Built This
 
-* **Activity Matrix:** Interactive 16-week contribution heatmap tracking coding submissions across platforms (LeetCode, Codeforces, GeeksforGeeks, Custom).
-* **Submission Ledger:** Rapid problem logging with difficulty categorization (`Easy`, `Medium`, `Hard`) and automatic date indexing.
-* **Auto-Recalculating Streaks:** Live tracker recording active streak days and longest consistency runs.
-* **Rule of 3 Engine:** Prioritize exactly three non-negotiables each day to eliminate task paralysis.
-* **Student Routine Timetable:** Time-bound habit blocks with dynamic reminder alerts (`Active Now`, `Starts at X`, `Late / Pending`).
-* **Gamification & RPG Hierarchy:** Earn XP (`+30 XP` per problem, `+20 XP` per focus goal, `+40 XP` per routine block) to advance tiers and unlock milestone achievements.
-* **Privacy-First Cloud Vault:** One-click OAuth 2.0 backup and restore directly into your private hidden application sandbox on Google Drive. Zero third-party databases.
-* **Dual Responsive Shell:** Full dual-column control deck for desktop screens and an installable PWA with bottom navigation for mobile devices.
+I built Go with Flow because I wanted a fast, distraction-free dashboard to manage daily habits, track LeetCode and Codeforces problem practice, and do focused deep-work sessions—without paying for subscriptions or storing personal routines on third-party servers.
+
+Most productivity web apps require a hosted database and backend API. When deployed on free hosting tiers (such as Render or Railway), the backend sleeps after 15 minutes, resulting in 50–90 second cold-start delays every time you open the app on your phone.
+
+Go with Flow solves this by running 100% local-first:
+- **Zero backend cold-starts:** All tasks, coding logs, focus statistics, and routines live directly in your browser's persistent storage.
+- **Serverless API proxies:** LeetCode and Codeforces synchronization is handled directly by Next.js serverless route handlers, avoiding CORS issues without needing a Python server.
+- **Private multi-device backup:** Optionally back up encrypted snapshots directly into your personal Google Drive sandbox (`appDataFolder`) using Google OAuth.
+- **Mobile PWA:** Installable as a native full-screen app on iOS and Android with offline caching.
 
 ---
 
-## Tech Stack
+## What It Does
 
-| Layer | Technologies |
-| :--- | :--- |
-| **Frontend** | Next.js 16 (App Router), TypeScript, Tailwind CSS, Lucide React, Canvas Confetti |
-| **Backend** | Python 3.10+, FastAPI, SQLAlchemy 2.0, Pydantic V2 |
-| **Storage** | SQLite (Local Device), Google Drive API v3 (`appDataFolder`) |
-| **Auth** | Google Identity Services (GIS) OAuth 2.0 |
+### Coding Arena
+- **52-Week Contribution Heatmap:** GitHub-style activity grid displaying consistency over 16 weeks, 26 weeks, or a full year.
+- **LeetCode & Codeforces Auto-Sync:** Enter your handle to pull solved problems, difficulty breakdowns, and recent accepted submissions into your ledger.
+- **Problem Logger:** Fast entry form for logging problems across LeetCode, Codeforces, GeeksforGeeks, HackerRank, or custom contest links with editable logs.
+
+### Deep Work Focus Timer
+- **Pomodoro Engine:** Configurable work sprint intervals (15m, 25m, 50m, or custom duration).
+- **Fullscreen Zen Mode:** Automatically fades away all navigation and controls on cursor idle so you can concentrate purely on the countdown.
+- **Audio Hub:**
+  - YouTube background player: paste any YouTube live stream or video (e.g. Lofi Girl, synthwave).
+  - Curated lo-fi web radio and direct `.mp3` stream support.
+  - Offline procedural synthesizer: generates Brownian noise, 10Hz binaural alpha brainwaves, and rain sounds using the Web Audio API without using network bandwidth.
+- **Anti-Cheat XP:** Focus minutes and XP are only recorded when the timer naturally finishes (`00:00`).
+
+### Tasks, Routines & Notes
+- **Rule of 3 Focus:** Set three non-negotiable daily objectives to prevent decision fatigue.
+- **Timetable Schedule:** Time-blocked routine tracker with live indicator chips (`Active Now`, `Starts at X`, `Pending`).
+- **Calendar Date Picker:** Interactive month/year calendar widget for scheduling habit blocks and setting task due dates.
+- **Backlog & Markdown Scratchpad:** Quick-capture checklist and persistent notes for daily thoughts.
+- **Balanced XP Economy:** Completing tasks awards XP; unchecking them deducts the exact XP awarded.
+
+### Appearance & Privacy
+- **Themes & White Mode:** Toggle between Dark Cyberpunk and a clean, high-contrast Light/White mode, accompanied by 5 accent colors (Emerald, Cyan, Purple, Amber, Rose).
+- **Google Drive Cloud Vault:** Save and restore your entire data snapshot to your private Google Drive app folder.
+- **Reset Safety Gate:** Requires typing `DELETE ALL MY DATA` to purge local records.
 
 ---
 
@@ -38,114 +52,100 @@ A local-first, privacy-focused developer command center and student routine arch
 
 ```text
 go-with-flow/
-├── backend/
-│   ├── app/
-│   │   ├── models/        # SQLAlchemy ORM models
-│   │   ├── routers/       # Modular FastAPI routers
-│   │   ├── schemas/       # Pydantic V2 schemas
-│   │   └── database.py    # Database connection & session dependencies
-│   ├── main.py            # Application entrypoint & CORS setup
-│   └── requirements.txt   # Backend dependencies
 ├── frontend/
-│   ├── public/            # PWA manifest, service workers, and icons
+│   ├── public/              # Web manifest, icons, service worker (sw.js)
 │   ├── src/
-│   │   ├── app/           # App Router layout, root orchestrator, and metadata
+│   │   ├── app/
+│   │   │   ├── api/sync/    # Serverless API routes (LeetCode & Codeforces)
+│   │   │   ├── globals.css  # Dark & White mode styling, accent palettes
+│   │   │   ├── layout.tsx   # PWA meta tags and font setup
+│   │   │   └── page.tsx     # Main dashboard layout and state
 │   │   ├── components/
-│   │   │   ├── arena/     # Heatmap, ProblemLogger, and RecentLogs
-│   │   │   ├── focus/     # DailyFocusCard and FocusSection
-│   │   │   ├── navigation/# Header and MobileNav
-│   │   │   ├── routine/   # RoutineSection
-│   │   │   ├── settings/  # Drive backup and storage controls
-│   │   │   └── stats/     # AchievementsView
-│   │   ├── lib/           # Centralized API client & Drive sync engine
-│   │   └── types/         # TypeScript interfaces
-│   └── .env.local         # Client credentials
+│   │   │   ├── arena/       # Heatmap, ProblemLogger, RecentLogs
+│   │   │   ├── focus/       # PomodoroTimer, audio synthesizer, DailyFocusCard
+│   │   │   ├── routine/     # RoutineSection timetable
+│   │   │   ├── tasks/       # TasksAndNotes (Rule-of-3, backlog, scratchpad)
+│   │   │   ├── navigation/  # Header, XP progress, and mobile nav
+│   │   │   ├── settings/    # Appearance, Google Drive vault, danger zone
+│   │   │   ├── stats/       # AchievementsView and badges
+│   │   │   └── ui/          # CalendarPicker and modals
+│   │   ├── lib/             # api.ts (local storage engine), driveSync.ts, theme.ts
+│   │   └── types/           # TypeScript interfaces
+│   ├── package.json
+│   └── tsconfig.json
+├── package.json             # Root monorepo scripts
+├── vercel.json              # Vercel deployment configuration
 └── README.md
 ```
 
 ---
 
-## Getting Started
+## Quickstart
 
 ### Prerequisites
+- Node.js 18 or higher
+- npm
 
-* Python 3.10+
-* Node.js 18+ & npm
-* Google Cloud Project with the Google Drive API enabled
+### Local Development
 
----
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/your-username/go-with-flow.git
+   cd go-with-flow
+   ```
 
-### Backend Setup
+2. Install dependencies and start the dev server:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
 
-1. Navigate to the backend directory:
-```bash
-cd backend
-```
-
-2. Create and activate a Python virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate
-```
-
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-4. Run the API server:
-```bash
-uvicorn main:app --reload --port 8000
-```
-
-The API will be available at `http://localhost:8000`. OpenAPI documentation is accessible at `http://localhost:8000/docs`.
+3. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-### Frontend Setup
+## Deploying to Vercel
 
-1. Navigate to the frontend directory:
-```bash
-cd frontend
-```
+Deploying to Vercel is free and takes about two minutes:
 
-2. Install dependencies:
-```bash
-npm install
-```
+1. Push this repository to GitHub.
+2. Go to [vercel.com](https://vercel.com) and import the repository.
+3. Keep the Root Directory as default (or set to `frontend`).
+4. Click **Deploy**.
 
-3. Set up environment variables:
-Create a `.env.local` file inside `frontend/`:
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
-```
-
-4. Run the frontend application:
-```bash
-npm run dev
-```
-
-Open `http://localhost:3000` in your browser.
+Because the application is serverless, there are no databases to provision or backend servers to manage.
 
 ---
 
-## Google Drive Cloud Vault Setup
+## Installing on Mobile (PWA)
 
-1. Open the [Google Cloud Console](https://console.cloud.google.com/).
-2. Enable the **Google Drive API**.
-3. Under **OAuth consent screen**, add the scope:
-```text
-https://www.googleapis.com/auth/drive.appdata
-```
-4. Add your personal Google account to **Test Users**.
-5. Under **Credentials**, create an **OAuth 2.0 Web Client ID**:
-   * Add `http://localhost:3000` to **Authorized JavaScript origins**.
-   * Leave Authorized redirect URIs empty.
-6. Copy the Client ID into `frontend/.env.local`.
+To run Go with Flow as a standalone mobile app:
+
+- **iOS (Safari):** Open your Vercel URL in Safari → tap Share (`⎋`) → select **Add to Home Screen**.
+- **Android (Chrome):** Open your Vercel URL in Chrome → tap the menu (`⋮`) → select **Install App** or **Add to Home Screen**.
+
+The app works offline and launches full-screen like a native application.
+
+---
+
+## Google Drive Cloud Sync (Optional)
+
+If you want cross-device backup between your laptop and phone:
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2. Create a project and enable the **Google Drive API**.
+3. Under **OAuth consent screen**, select **External** and add your Google account to test users.
+4. Add the scope: `https://www.googleapis.com/auth/drive.appdata`.
+5. Create an **OAuth 2.0 Client ID** (Web application type) and add your deployed Vercel domain and `http://localhost:3000` to **Authorized JavaScript origins**.
+6. Add the Client ID to `frontend/.env.local`:
+   ```env
+   NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   ```
+7. In Vercel, add `NEXT_PUBLIC_GOOGLE_CLIENT_ID` under **Project Settings > Environment Variables**.
 
 ---
 
 ## License
 
-Distributed under the MIT License.
+MIT License. Feel free to use and customize for your own workflow.

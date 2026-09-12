@@ -13,15 +13,12 @@ import {
   Clock,
   Code2,
   RefreshCw,
-  ExternalLink,
   CheckCircle2,
-  TrendingUp,
   X,
   Target,
   Moon,
-  Calendar,
-  Layers,
   Crown,
+  Search,
 } from "lucide-react";
 import {
   UserStats,
@@ -62,7 +59,7 @@ export default function AchievementsView({
   const [focusStats, setFocusStats] = useState<FocusStats | null>(null);
   const [codingAnalytics, setCodingAnalytics] =
     useState<CodingAnalytics | null>(null);
-  const [loadingAnalytics, setLoadingAnalytics] = useState(true);
+  const [, setLoadingAnalytics] = useState(true);
 
   // LeetCode Sync State
   const [lcUsername, setLcUsername] = useState("");
@@ -81,15 +78,88 @@ export default function AchievementsView({
     null,
   );
 
-  // Load saved handles and fetch stats on mount
+  // All Badges Explorer Modal State
+  const [showAllBadgesModal, setShowAllBadgesModal] = useState(false);
+  const [badgeCategoryFilter, setBadgeCategoryFilter] = useState<string>("All");
+  const [badgeSearchQuery, setBadgeSearchQuery] = useState("");
+  const [badgeStatusFilter, setBadgeStatusFilter] = useState<
+    "all" | "unlocked" | "locked"
+  >("all");
+  const [cachedTodayMins, setCachedTodayMins] = useState(0);
+
+  // Load saved handles, fetch stats on mount, and trigger background auto-sync
   useEffect(() => {
+    let savedLc = "";
+    let savedCf = "";
     if (typeof window !== "undefined") {
-      const savedLc = localStorage.getItem("streakflow_lc_handle");
-      const savedCf = localStorage.getItem("streakflow_cf_handle");
+      savedLc = localStorage.getItem("streakflow_lc_handle") || "";
+      savedCf = localStorage.getItem("streakflow_cf_handle") || "";
       if (savedLc) setLcUsername(savedLc);
       if (savedCf) setCfHandle(savedCf);
+      const todayKey = `streakflow_focus_mins_${new Date().toISOString().slice(0, 10)}`;
+      const val = parseInt(localStorage.getItem(todayKey) || "0", 10);
+      setCachedTodayMins(val);
     }
-    loadStatsData();
+
+    loadStatsData().then(() => {
+      // Auto-sync in background if handles exist
+      if (savedLc) {
+        setSyncingLc(true);
+        api
+          .syncLeetCode(savedLc)
+          .then((res) => {
+            setLcResult(res);
+            loadStatsData();
+          })
+          .catch((err) => {
+            console.warn("Background LeetCode auto-sync:", err);
+          })
+          .finally(() => setSyncingLc(false));
+      }
+      if (savedCf) {
+        setSyncingCf(true);
+        api
+          .syncCodeforces(savedCf)
+          .then((res) => {
+            setCfResult(res);
+            loadStatsData();
+          })
+          .catch((err) => {
+            console.warn("Background Codeforces auto-sync:", err);
+          })
+          .finally(() => setSyncingCf(false));
+      }
+    });
+
+    const handleFocusCompleted = () => {
+      loadStatsData();
+      if (typeof window !== "undefined") {
+        const todayKey = `streakflow_focus_mins_${new Date().toISOString().slice(0, 10)}`;
+        const val = parseInt(localStorage.getItem(todayKey) || "0", 10);
+        setCachedTodayMins(val);
+      }
+    };
+
+    const handleDataReset = () => {
+      setCachedTodayMins(0);
+      setFocusStats({
+        total_focus_minutes: 0,
+        today_focus_minutes: 0,
+        total_sessions: 0,
+        daily_stats: [],
+      });
+      loadStatsData();
+    };
+
+    window.addEventListener("focus-session-completed", handleFocusCompleted);
+    window.addEventListener("streakflow-data-reset", handleDataReset);
+    return () => {
+      window.removeEventListener(
+        "focus-session-completed",
+        handleFocusCompleted,
+      );
+      window.removeEventListener("streakflow-data-reset", handleDataReset);
+    };
   }, []);
 
   const loadStatsData = async () => {
@@ -405,15 +475,49 @@ export default function AchievementsView({
     cfResult?.total_solved ||
     0;
 
-  const otherCount = (codingAnalytics?.platform_breakdown || [])
-    .filter((p) => p.platform !== "LeetCode" && p.platform !== "Codeforces")
-    .reduce((acc, curr) => acc + curr.count, 0);
-
   // Maximum minutes for the 7-day bar chart
   const maxFocusMinutes = Math.max(
     ...(focusStats?.daily_stats.map((d) => d.focus_minutes) || [60]),
     60,
   );
+
+  // Focus Minutes Computation (guaranteed accurate minutes & zero-latency today cache)
+  const localTotalCompleted =
+    typeof window !== "undefined"
+      ? parseInt(
+          localStorage.getItem("streakflow_focus_total_completed_mins") || "0",
+          10,
+        )
+      : 0;
+  const backendToday = focusStats?.today_focus_minutes ?? 0;
+  const backendTotal = focusStats?.total_focus_minutes ?? 0;
+  const displayedTodayMinutes = Math.max(backendToday, cachedTodayMins);
+  const displayedTotalMinutes = Math.max(
+    backendTotal,
+    localTotalCompleted,
+    displayedTodayMinutes,
+  );
+
+  // Filtered badges for the Full Gallery Modal
+  const filteredBadges = useMemo(() => {
+    return badges.filter((b) => {
+      if (badgeCategoryFilter !== "All" && b.category !== badgeCategoryFilter) {
+        return false;
+      }
+      if (badgeStatusFilter === "unlocked" && !b.unlocked) return false;
+      if (badgeStatusFilter === "locked" && b.unlocked) return false;
+      if (badgeSearchQuery.trim()) {
+        const q = badgeSearchQuery.toLowerCase();
+        return (
+          b.title.toLowerCase().includes(q) ||
+          b.desc.toLowerCase().includes(q) ||
+          b.lore.toLowerCase().includes(q) ||
+          b.tier.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [badges, badgeCategoryFilter, badgeStatusFilter, badgeSearchQuery]);
 
   return (
     <div className="space-y-6 font-mono">
@@ -477,13 +581,29 @@ export default function AchievementsView({
           <span className="text-[10px] uppercase text-zinc-500 block font-bold">
             Focus Time
           </span>
-          <span className="text-2xl font-black text-cyan-400 mt-1 block">
-            {Math.round(((focusStats?.total_focus_minutes ?? 0) / 60) * 10) /
-              10}
-            h
-          </span>
-          <span className="text-[10px] text-zinc-400">
-            {focusStats?.total_sessions ?? 0} Pomodoros
+          <div className="flex items-baseline gap-1 mt-1">
+            <span
+              suppressHydrationWarning
+              className="text-2xl font-black text-cyan-400"
+            >
+              {displayedTotalMinutes}
+            </span>
+            <span className="text-xs text-cyan-300/80 font-bold">mins</span>
+            {displayedTotalMinutes >= 60 && (
+              <span
+                suppressHydrationWarning
+                className="text-[10px] text-zinc-500 font-normal"
+              >
+                ({Math.round((displayedTotalMinutes / 60) * 10) / 10}h)
+              </span>
+            )}
+          </div>
+          <span
+            suppressHydrationWarning
+            className="text-[10px] text-zinc-400 block mt-0.5"
+          >
+            Today: {displayedTodayMinutes}m • {focusStats?.total_sessions ?? 0}{" "}
+            Pomodoros
           </span>
         </div>
 
@@ -681,7 +801,7 @@ export default function AchievementsView({
             </div>
             <div className="text-right">
               <span className="text-xs text-cyan-400 font-bold">
-                {focusStats?.today_focus_minutes ?? 0}m
+                {displayedTodayMinutes}m
               </span>
               <span className="text-[10px] text-zinc-500 block">Today</span>
             </div>
@@ -812,15 +932,25 @@ export default function AchievementsView({
 
       {/* EXPANDED BADGES & CELEBRATION SECTION */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
-            <Award className="w-4 h-4 text-emerald-400" /> Milestones & Badges (
-            {badges.filter((b) => b.unlocked).length} / {badges.length}{" "}
-            Unlocked)
-          </h3>
-          <span className="text-[11px] text-emerald-400">
-            Click an unlocked badge to celebrate! 🎉
-          </span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+              <Award className="w-4 h-4 text-emerald-400" /> Milestones & Badges
+              ({badges.filter((b) => b.unlocked).length} / {badges.length}{" "}
+              Unlocked)
+            </h3>
+            <p className="text-[11px] text-zinc-500">
+              Click an unlocked badge to celebrate with sound & confetti! 🎉
+            </p>
+          </div>
+
+          <button
+            onClick={() => setShowAllBadgesModal(true)}
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-700/80 text-emerald-300 text-xs font-bold transition cursor-pointer self-start sm:self-auto shadow-sm"
+          >
+            <Trophy className="w-3.5 h-3.5 text-amber-400" />
+            <span>View All Badges ({badges.length})</span>
+          </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -883,7 +1013,7 @@ export default function AchievementsView({
           <div className="bg-gradient-to-b from-zinc-900 to-zinc-950 border border-emerald-500/80 w-full max-w-md rounded-3xl p-6 text-center space-y-4 shadow-[0_0_60px_rgba(16,185,129,0.3)] relative overflow-hidden">
             <button
               onClick={() => setCelebratingBadge(null)}
-              className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 transition"
+              className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 transition cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -933,6 +1063,163 @@ export default function AchievementsView({
               >
                 Done
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW ALL BADGES & ACHIEVEMENTS MODAL */}
+      {showAllBadgesModal && (
+        <div className="fixed inset-0 z-[105] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in">
+          <div className="bg-zinc-950 border border-zinc-800 w-full max-w-4xl max-h-[90vh] rounded-3xl p-5 sm:p-6 flex flex-col shadow-2xl relative overflow-hidden font-mono">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-950/60 border border-emerald-800 text-emerald-400 rounded-2xl">
+                  <Trophy className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">
+                    Hall of Achievements & Badges
+                  </h3>
+                  <p className="text-xs text-zinc-400">
+                    {badges.filter((b) => b.unlocked).length} of {badges.length}{" "}
+                    unlocked (
+                    {Math.round(
+                      (badges.filter((b) => b.unlocked).length /
+                        badges.length) *
+                        100,
+                    )}
+                    % complete)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAllBadgesModal(false)}
+                className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="pt-4 pb-2 space-y-3">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search badge name, lore, or tier..."
+                    value={badgeSearchQuery}
+                    onChange={(e) => setBadgeSearchQuery(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-zinc-200 outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                {/* Status Toggle */}
+                <div className="flex items-center bg-zinc-900 p-1 rounded-xl border border-zinc-800 self-start sm:self-auto">
+                  {(["all", "unlocked", "locked"] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setBadgeStatusFilter(s)}
+                      className={`px-3 py-1 rounded-lg text-xs capitalize transition cursor-pointer ${
+                        badgeStatusFilter === s
+                          ? "bg-zinc-800 text-emerald-400 font-bold border border-zinc-700"
+                          : "text-zinc-500 hover:text-zinc-300"
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                {["All", "DSA", "Streak", "Focus", "Special"].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setBadgeCategoryFilter(cat)}
+                    className={`px-3 py-1 rounded-lg text-xs transition cursor-pointer whitespace-nowrap ${
+                      badgeCategoryFilter === cat
+                        ? "bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold"
+                        : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-zinc-200"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Badges Grid Scroll Area */}
+            <div className="flex-1 overflow-y-auto pt-4 pr-1 space-y-3 scrollbar-thin scrollbar-thumb-zinc-800 max-h-[55vh]">
+              {filteredBadges.length === 0 ? (
+                <div className="text-center py-12 text-zinc-500 text-xs">
+                  No badges found matching your search.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {filteredBadges.map((b) => {
+                    const Icon = b.icon;
+                    return (
+                      <div
+                        key={b.id}
+                        onClick={() => {
+                          if (b.unlocked) {
+                            triggerBadgeCelebration(b);
+                          }
+                        }}
+                        className={`p-4 rounded-2xl border flex items-start gap-3 transition-all ${
+                          b.unlocked
+                            ? "bg-zinc-900/80 hover:bg-zinc-900 border-zinc-700 cursor-pointer hover:border-emerald-500 hover:scale-[1.01]"
+                            : "bg-zinc-950 border-zinc-900 opacity-40 grayscale cursor-not-allowed"
+                        }`}
+                      >
+                        <div
+                          className={`p-2.5 rounded-xl border shrink-0 ${
+                            b.unlocked
+                              ? "bg-emerald-950 border-emerald-700 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.25)]"
+                              : "bg-zinc-900 border-zinc-800 text-zinc-600"
+                          }`}
+                        >
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <h4 className="text-xs font-bold text-zinc-200 truncate">
+                              {b.title}
+                            </h4>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 border border-zinc-700 text-zinc-400">
+                              {b.tier}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
+                            {b.desc}
+                          </p>
+                          <p className="text-[10px] text-zinc-500 italic mt-1.5 bg-zinc-950/80 p-1.5 rounded-lg border border-zinc-900">
+                            "{b.lore}"
+                          </p>
+                          <div className="flex items-center justify-between mt-2 pt-1 border-t border-zinc-800/60">
+                            <span
+                              className={`text-[10px] font-bold ${
+                                b.unlocked
+                                  ? "text-emerald-400"
+                                  : "text-zinc-600"
+                              }`}
+                            >
+                              {b.unlocked ? "✓ UNLOCKED • CELEBRATE" : "LOCKED"}
+                            </span>
+                            <span className="text-[9px] text-zinc-500 uppercase">
+                              {b.category}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -1,8 +1,14 @@
 "use client";
 
-import { Terminal, Clock, BarChart3, Settings } from "lucide-react";
+import {
+  Terminal,
+  Timer,
+  CheckSquare,
+  BarChart3,
+  Settings,
+} from "lucide-react";
 
-export type NavTab = "arena" | "routine" | "stats" | "settings";
+export type NavTab = "arena" | "focus" | "tasks" | "stats" | "settings";
 
 interface MobileNavProps {
   activeTab: NavTab;
@@ -12,14 +18,15 @@ interface MobileNavProps {
 export default function MobileNav({ activeTab, onTabChange }: MobileNavProps) {
   const tabs = [
     { id: "arena", label: "Arena", icon: Terminal },
-    { id: "routine", label: "Routine", icon: Clock },
-    { id: "stats", label: "Statistics", icon: BarChart3 },
+    { id: "focus", label: "Focus", icon: Timer },
+    { id: "tasks", label: "Tasks & Notes", icon: CheckSquare },
+    { id: "stats", label: "Stats", icon: BarChart3 },
     { id: "settings", label: "Settings", icon: Settings },
   ] as const;
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800 px-6 py-2 pb-5">
-      <div className="flex items-center justify-between">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800 px-3 py-2 pb-5">
+      <div className="flex items-center justify-around">
         {tabs.map((t) => {
           const Icon = t.icon;
           const isActive = activeTab === t.id;
@@ -27,13 +34,13 @@ export default function MobileNav({ activeTab, onTabChange }: MobileNavProps) {
             <button
               key={t.id}
               onClick={() => onTabChange(t.id)}
-              className={`flex flex-col items-center gap-1 transition ${
+              className={`flex flex-col items-center gap-1 transition px-2 py-1 cursor-pointer ${
                 isActive
-                  ? "text-emerald-400"
+                  ? "text-emerald-400 font-bold"
                   : "text-zinc-500 hover:text-zinc-300"
               }`}
             >
-              <Icon className="w-5 h-5" />
+              <Icon className="w-4 h-4" />
               <span className="text-[10px] font-mono">{t.label}</span>
             </button>
           );

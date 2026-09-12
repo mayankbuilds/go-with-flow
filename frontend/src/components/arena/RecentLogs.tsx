@@ -118,8 +118,6 @@ export default function RecentLogs({
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm("Are you sure you want to delete this submission log?"))
-      return;
     try {
       if (onDeleteLog) {
         await onDeleteLog(id);

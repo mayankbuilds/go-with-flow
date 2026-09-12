@@ -1,134 +1,814 @@
-import { 
+import {
   CodingAnalytics,
-  CodingLog, 
+  CodingLog,
   CodingSyncResult,
-  HeatmapDay, 
-  DailyFocus, 
+  HeatmapDay,
+  DailyFocus,
   FocusSession,
   FocusStats,
-  StudentRoutine, 
-  UserStats 
+  StudentRoutine,
+  UserStats,
 } from "@/types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+
+// Helper for local offline storage fallback
+function getLocal<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function setLocal<T>(key: string, val: T): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify(val));
+  } catch {}
+}
 
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${endpoint}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-    ...options,
-  });
-
-  if (!res.ok) {
-    const errorBody = await res.json().catch(() => ({}));
-    throw new Error(errorBody.detail || `Request failed with status ${res.status}`);
+  if (!API_BASE) {
+    throw new Error("Local-first mode: No remote backend URL defined");
   }
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s timeout before falling back
 
-  // Handle 204 No Content
-  if (res.status === 204) {
-    return {} as T;
+    const res = await fetch(`${API_BASE}${endpoint}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+      signal: controller.signal,
+      ...options,
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      const errorBody = await res.json().catch(() => ({}));
+      throw new Error(
+        errorBody.detail || `Request failed with status ${res.status}`,
+      );
+    }
+
+    if (res.status === 204) {
+      return {} as T;
+    }
+
+    return await res.json();
+  } catch (err) {
+    // Pass error to offline fallback handlers
+    throw err;
   }
-
-  return res.json();
 }
 
 export const api = {
   // Coding Arena & Analytics
-  getHeatmap: (days: number = 112) => 
-    request<HeatmapDay[]>(`/coding/heatmap?days=${days}`),
-  
-  getRecentLogs: (limit: number = 10, offset: number = 0) => 
-    request<CodingLog[]>(`/coding/logs?limit=${limit}&offset=${offset}`),
-  
-  logProblem: (data: { problem_title: string; platform: string; difficulty: string; topic_tag: string }) => 
-    request<CodingLog>("/coding/logs", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+  getHeatmap: async (days: number = 112): Promise<HeatmapDay[]> => {
+    try {
+      const data = await request<HeatmapDay[]>(`/coding/heatmap?days=${days}`);
+      setLocal("streakflow_cached_heatmap", data);
+      return data;
+    } catch {
+      // Local fallback
+      const logs = getLocal<CodingLog[]>("streakflow_logs", []);
+      const countMap: Record<string, number> = {};
+      logs.forEach((l) => {
+        const d = l.solved_at.slice(0, 10);
+        countMap[d] = (countMap[d] || 0) + 1;
+      });
 
-  updateCodingLog: (id: number, data: { problem_title?: string; platform?: string; difficulty?: string; topic_tag?: string }) =>
-    request<CodingLog>(`/coding/logs/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    }),
+      const today = new Date();
+      const result: HeatmapDay[] = [];
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const dStr = d.toISOString().slice(0, 10);
+        result.push({ date: dStr, count: countMap[dStr] || 0 });
+      }
+      return result;
+    }
+  },
 
-  deleteCodingLog: (id: number) =>
-    request<void>(`/coding/logs/${id}`, { method: "DELETE" }),
+  getRecentLogs: async (
+    limit: number = 10,
+    offset: number = 0,
+  ): Promise<CodingLog[]> => {
+    try {
+      const data = await request<CodingLog[]>(
+        `/coding/logs?limit=${limit}&offset=${offset}`,
+      );
+      setLocal("streakflow_logs", data);
+      return data;
+    } catch {
+      const logs = getLocal<CodingLog[]>("streakflow_logs", []);
+      return logs.slice(offset, offset + limit);
+    }
+  },
 
-  getCodingAnalytics: () =>
-    request<CodingAnalytics>("/coding/analytics"),
+  logProblem: async (data: {
+    problem_title: string;
+    platform: string;
+    difficulty: string;
+    topic_tag: string;
+  }): Promise<CodingLog> => {
+    try {
+      const item = await request<CodingLog>("/coding/logs", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      const localLogs = getLocal<CodingLog[]>("streakflow_logs", []);
+      setLocal("streakflow_logs", [item, ...localLogs]);
+      return item;
+    } catch {
+      // Offline local creation
+      const localLogs = getLocal<CodingLog[]>("streakflow_logs", []);
+      const newLog: CodingLog = {
+        id: Date.now(),
+        problem_title: data.problem_title,
+        platform: data.platform,
+        difficulty: data.difficulty,
+        topic_tag: data.topic_tag,
+        solved_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      };
+      setLocal("streakflow_logs", [newLog, ...localLogs]);
 
-  syncLeetCode: (username: string) =>
-    request<CodingSyncResult>("/coding/sync/leetcode", {
-      method: "POST",
-      body: JSON.stringify({ username }),
-    }),
+      // Update local user stats XP
+      const stats = getLocal<UserStats>("streakflow_user_stats", {
+        id: 1,
+        xp: 100,
+        level: 1,
+        current_streak_days: 1,
+        longest_streak_days: 1,
+        last_active_date: new Date().toISOString().slice(0, 10),
+      });
+      const xpToAdd =
+        data.difficulty === "Easy" ? 10 : data.difficulty === "Medium" ? 25 : 50;
+      stats.xp += xpToAdd;
+      stats.level = Math.floor(stats.xp / 300) + 1;
+      setLocal("streakflow_user_stats", stats);
 
-  syncCodeforces: (handle: string) =>
-    request<CodingSyncResult>("/coding/sync/codeforces", {
-      method: "POST",
-      body: JSON.stringify({ handle }),
-    }),
+      return newLog;
+    }
+  },
+
+  updateCodingLog: async (
+    id: number,
+    data: {
+      problem_title?: string;
+      platform?: string;
+      difficulty?: string;
+      topic_tag?: string;
+    },
+  ): Promise<CodingLog> => {
+    try {
+      const item = await request<CodingLog>(`/coding/logs/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
+      const localLogs = getLocal<CodingLog[]>("streakflow_logs", []);
+      setLocal(
+        "streakflow_logs",
+        localLogs.map((l) => (l.id === id ? item : l)),
+      );
+      return item;
+    } catch {
+      const localLogs = getLocal<CodingLog[]>("streakflow_logs", []);
+      const existing = localLogs.find((l) => l.id === id);
+      const updated: CodingLog = existing
+        ? { ...existing, ...data }
+        : ({
+            id,
+            problem_title: data.problem_title || "",
+            platform: data.platform || "LeetCode",
+            difficulty: data.difficulty || "Medium",
+            topic_tag: data.topic_tag || "General",
+            solved_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          } as CodingLog);
+      setLocal(
+        "streakflow_logs",
+        localLogs.map((l) => (l.id === id ? updated : l)),
+      );
+      return updated;
+    }
+  },
+
+  deleteCodingLog: async (id: number): Promise<void> => {
+    try {
+      await request<void>(`/coding/logs/${id}`, { method: "DELETE" });
+    } catch {}
+    const localLogs = getLocal<CodingLog[]>("streakflow_logs", []);
+    setLocal(
+      "streakflow_logs",
+      localLogs.filter((l) => l.id !== id),
+    );
+  },
+
+  getCodingAnalytics: async (): Promise<CodingAnalytics> => {
+    try {
+      const data = await request<CodingAnalytics>("/coding/analytics");
+      setLocal("streakflow_analytics", data);
+      return data;
+    } catch {
+      const logs = getLocal<CodingLog[]>("streakflow_logs", []);
+      const total_solved = logs.length;
+
+      const platMap: Record<string, number> = {};
+      const diffMap: Record<string, number> = { Easy: 0, Medium: 0, Hard: 0 };
+      logs.forEach((l) => {
+        platMap[l.platform] = (platMap[l.platform] || 0) + 1;
+        if (diffMap[l.difficulty] !== undefined) {
+          diffMap[l.difficulty]++;
+        } else {
+          diffMap["Medium"]++;
+        }
+      });
+
+      return {
+        total_solved,
+        platform_breakdown: Object.entries(platMap).map(([p, count]) => ({
+          platform: p,
+          count,
+          color:
+            p === "LeetCode"
+              ? "#f59e0b"
+              : p === "Codeforces"
+                ? "#3b82f6"
+                : "#10b981",
+        })),
+        difficulty_breakdown: [
+          { difficulty: "Easy", count: diffMap["Easy"], color: "#10b981" },
+          { difficulty: "Medium", count: diffMap["Medium"], color: "#f59e0b" },
+          { difficulty: "Hard", count: diffMap["Hard"], color: "#ef4444" },
+        ],
+      };
+    }
+  },
+
+  syncLeetCode: async (username: string): Promise<CodingSyncResult> => {
+    // Direct serverless route handler on Vercel / Next.js
+    const res = await fetch(
+      `/api/sync/leetcode?username=${encodeURIComponent(username)}`,
+    );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `LeetCode sync failed (${res.status})`);
+      }
+      const data = await res.json();
+
+      const localLogs = getLocal<CodingLog[]>("streakflow_logs", []);
+      const existingTitles = new Set(
+        localLogs.map((l) => l.problem_title.toLowerCase()),
+      );
+      let syncedCount = 0;
+      const newLogs: CodingLog[] = [];
+
+      data.recent_submissions?.forEach(
+        (sub: {
+          title: string;
+          slug: string;
+          timestamp: number;
+          url: string;
+        }) => {
+          if (!existingTitles.has(sub.title.toLowerCase())) {
+            existingTitles.add(sub.title.toLowerCase());
+            syncedCount++;
+            const d = sub.timestamp
+              ? new Date(sub.timestamp * 1000)
+              : new Date();
+            newLogs.push({
+              id: Date.now() + Math.random(),
+              problem_title: sub.title,
+              platform: "LeetCode",
+              difficulty: "Medium",
+              topic_tag: "LeetCode Sync",
+              problem_url: sub.url,
+              solved_at: d.toISOString().slice(0, 10),
+              created_at: new Date().toISOString(),
+            });
+          }
+        },
+      );
+
+      if (newLogs.length > 0) {
+        setLocal("streakflow_logs", [...newLogs, ...localLogs]);
+        const stats = getLocal<UserStats>("streakflow_user_stats", {
+          id: 1,
+          xp: 100,
+          level: 1,
+          current_streak_days: 1,
+          longest_streak_days: 1,
+          last_active_date: new Date().toISOString().slice(0, 10),
+        });
+        stats.xp += syncedCount * 30;
+        stats.level = Math.floor(stats.xp / 300) + 1;
+        setLocal("streakflow_user_stats", stats);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("streakflow-stats-updated"));
+        }
+      }
+
+      return {
+        platform: "LeetCode",
+        handle: username,
+        total_solved: data.total_solved,
+        easy_solved: data.easy_solved,
+        medium_solved: data.medium_solved,
+        hard_solved: data.hard_solved,
+        rank: data.rank,
+        synced_problems_count: syncedCount,
+        message: `Synced ${syncedCount} new problem(s) from LeetCode! Total solved: ${data.total_solved}`,
+      };
+  },
+
+  syncCodeforces: async (handle: string): Promise<CodingSyncResult> => {
+    // Direct serverless route handler on Vercel / Next.js
+    const res = await fetch(
+      `/api/sync/codeforces?handle=${encodeURIComponent(handle)}`,
+    );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Codeforces sync failed (${res.status})`);
+      }
+      const data = await res.json();
+
+      const localLogs = getLocal<CodingLog[]>("streakflow_logs", []);
+      const existingTitles = new Set(
+        localLogs.map((l) => l.problem_title.toLowerCase()),
+      );
+      let syncedCount = 0;
+      const newLogs: CodingLog[] = [];
+
+      data.recent_submissions?.forEach(
+        (sub: {
+          title: string;
+          difficulty: string;
+          timestamp: number;
+          url: string;
+        }) => {
+          if (!existingTitles.has(sub.title.toLowerCase())) {
+            existingTitles.add(sub.title.toLowerCase());
+            syncedCount++;
+            const d = sub.timestamp
+              ? new Date(sub.timestamp * 1000)
+              : new Date();
+            newLogs.push({
+              id: Date.now() + Math.random(),
+              problem_title: sub.title,
+              platform: "Codeforces",
+              difficulty: sub.difficulty,
+              topic_tag: "Codeforces Sync",
+              problem_url: sub.url,
+              solved_at: d.toISOString().slice(0, 10),
+              created_at: new Date().toISOString(),
+            });
+          }
+        },
+      );
+
+      if (newLogs.length > 0) {
+        setLocal("streakflow_logs", [...newLogs, ...localLogs]);
+        const stats = getLocal<UserStats>("streakflow_user_stats", {
+          id: 1,
+          xp: 100,
+          level: 1,
+          current_streak_days: 1,
+          longest_streak_days: 1,
+          last_active_date: new Date().toISOString().slice(0, 10),
+        });
+        stats.xp += syncedCount * 30;
+        stats.level = Math.floor(stats.xp / 300) + 1;
+        setLocal("streakflow_user_stats", stats);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("streakflow-stats-updated"));
+        }
+      }
+
+      return {
+        platform: "Codeforces",
+        handle,
+        total_solved: data.total_solved,
+        easy_solved: data.easy_solved,
+        medium_solved: data.medium_solved,
+        hard_solved: data.hard_solved,
+        rank: data.rank,
+        synced_problems_count: syncedCount,
+        message: `Synced ${syncedCount} new problem(s) from Codeforces! Total solved: ${data.total_solved}`,
+      };
+  },
 
   // Rule of 3 Focus & Focus Sessions
-  getTodayFocus: () => 
-    request<DailyFocus[]>("/focus/today"),
-  
-  setFocusSlot: (data: { priority_order: number; title: string }) => 
-    request<DailyFocus>("/focus", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  
-  updateFocusTask: (id: number, data: { is_completed?: boolean; title?: string }) => 
-    request<DailyFocus>(`/focus/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
-  
-  deleteFocusTask: (id: number) => 
-    request<void>(`/focus/${id}`, { method: "DELETE" }),
+  getTodayFocus: async (): Promise<DailyFocus[]> => {
+    try {
+      const data = await request<DailyFocus[]>("/focus/today");
+      setLocal("streakflow_focus", data);
+      return data;
+    } catch {
+      return getLocal<DailyFocus[]>("streakflow_focus", []);
+    }
+  },
 
-  logFocusSession: (data: { duration_seconds: number; session_type?: string; xp_earned?: number }) =>
-    request<FocusSession>("/focus/sessions", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+  setFocusSlot: async (data: {
+    priority_order: number;
+    title: string;
+  }): Promise<DailyFocus> => {
+    try {
+      const item = await request<DailyFocus>("/focus", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      const local = getLocal<DailyFocus[]>("streakflow_focus", []);
+      const filtered = local.filter(
+        (f) => f.priority_order !== data.priority_order,
+      );
+      setLocal("streakflow_focus", [...filtered, item]);
+      return item;
+    } catch {
+      const local = getLocal<DailyFocus[]>("streakflow_focus", []);
+      const filtered = local.filter(
+        (f) => f.priority_order !== data.priority_order,
+      );
+      const newItem: DailyFocus = {
+        id: Date.now(),
+        priority_order: data.priority_order,
+        title: data.title,
+        target_date: new Date().toISOString().slice(0, 10),
+        is_completed: false,
+        created_at: new Date().toISOString(),
+      };
+      setLocal("streakflow_focus", [...filtered, newItem]);
+      return newItem;
+    }
+  },
 
-  getFocusStats: (days: number = 7) =>
-    request<FocusStats>(`/focus/stats?days=${days}`),
+  updateFocusTask: async (
+    id: number,
+    data: { is_completed?: boolean; title?: string },
+  ): Promise<DailyFocus> => {
+    try {
+      const item = await request<DailyFocus>(`/focus/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
+      const local = getLocal<DailyFocus[]>("streakflow_focus", []);
+      setLocal(
+        "streakflow_focus",
+        local.map((f) => (f.id === id ? item : f)),
+      );
+      return item;
+    } catch {
+      const local = getLocal<DailyFocus[]>("streakflow_focus", []);
+      const existing = local.find((f) => f.id === id);
+      if (
+        data.is_completed !== undefined &&
+        existing &&
+        existing.is_completed !== data.is_completed
+      ) {
+        const stats = getLocal<UserStats>("streakflow_user_stats", {
+          id: 1,
+          xp: 100,
+          level: 1,
+          current_streak_days: 1,
+          longest_streak_days: 1,
+          last_active_date: new Date().toISOString().slice(0, 10),
+        });
+        const deltaXP = data.is_completed ? 20 : -20;
+        stats.xp = Math.max(0, stats.xp + deltaXP);
+        stats.level = Math.floor(stats.xp / 300) + 1;
+        setLocal("streakflow_user_stats", stats);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("streakflow-stats-updated"));
+        }
+      }
+      const updated: DailyFocus = existing
+        ? { ...existing, ...data }
+        : ({
+            id,
+            priority_order: 1,
+            title: data.title || "",
+            target_date: new Date().toISOString().slice(0, 10),
+            is_completed: Boolean(data.is_completed),
+            created_at: new Date().toISOString(),
+          } as DailyFocus);
+      setLocal(
+        "streakflow_focus",
+        local.map((f) => (f.id === id ? updated : f)),
+      );
+      return updated;
+    }
+  },
+
+  deleteFocusTask: async (id: number): Promise<void> => {
+    try {
+      await request<void>(`/focus/${id}`, { method: "DELETE" });
+    } catch {}
+    const local = getLocal<DailyFocus[]>("streakflow_focus", []);
+    setLocal(
+      "streakflow_focus",
+      local.filter((f) => f.id !== id),
+    );
+  },
+
+  logFocusSession: async (data: {
+    duration_seconds: number;
+    session_type?: string;
+    xp_earned?: number;
+  }): Promise<FocusSession> => {
+    const today = new Date().toISOString().slice(0, 10);
+    const addedMinutes = Math.max(1, Math.round(data.duration_seconds / 60));
+
+    // Update local cache immediately
+    if (typeof window !== "undefined") {
+      const todayKey = `streakflow_focus_mins_${today}`;
+      const currToday = parseInt(localStorage.getItem(todayKey) || "0", 10);
+      localStorage.setItem(todayKey, (currToday + addedMinutes).toString());
+
+      const totalKey = "streakflow_focus_total_completed_mins";
+      const currTotal = parseInt(localStorage.getItem(totalKey) || "0", 10);
+      localStorage.setItem(totalKey, (currTotal + addedMinutes).toString());
+    }
+
+    try {
+      const item = await request<FocusSession>("/focus/sessions", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      const sessions = getLocal<FocusSession[]>("streakflow_sessions", []);
+      setLocal("streakflow_sessions", [item, ...sessions]);
+      return item;
+    } catch {
+      const sessions = getLocal<FocusSession[]>("streakflow_sessions", []);
+      const newSession: FocusSession = {
+        id: Date.now(),
+        duration_seconds: data.duration_seconds,
+        session_type: data.session_type || "focus",
+        target_date: today,
+        xp_earned: data.xp_earned || 50,
+        completed_at: new Date().toISOString(),
+      };
+      setLocal("streakflow_sessions", [newSession, ...sessions]);
+
+      // Add XP to user stats
+      const stats = getLocal<UserStats>("streakflow_user_stats", {
+        id: 1,
+        xp: 100,
+        level: 1,
+        current_streak_days: 1,
+        longest_streak_days: 1,
+      });
+      stats.xp += data.xp_earned || 50;
+      stats.level = Math.floor(stats.xp / 300) + 1;
+      setLocal("streakflow_user_stats", stats);
+
+      return newSession;
+    }
+  },
+
+  getFocusStats: async (days: number = 7): Promise<FocusStats> => {
+    try {
+      const data = await request<FocusStats>(`/focus/stats?days=${days}`);
+      setLocal("streakflow_cached_focus_stats", data);
+      return data;
+    } catch {
+      const sessions = getLocal<FocusSession[]>("streakflow_sessions", []);
+      const today = new Date().toISOString().slice(0, 10);
+
+      const total_seconds = sessions.reduce(
+        (acc, s) => acc + (s.duration_seconds || 0),
+        0,
+      );
+      const total_focus_minutes = Math.round(total_seconds / 60);
+
+      const todaySessions = sessions.filter((s) => s.target_date === today);
+      const today_seconds = todaySessions.reduce(
+        (acc, s) => acc + (s.duration_seconds || 0),
+        0,
+      );
+      const today_focus_minutes = Math.round(today_seconds / 60);
+
+      const daily_stats = [];
+      const now = new Date();
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const dStr = d.toISOString().slice(0, 10);
+        const daySessions = sessions.filter((s) => s.target_date === dStr);
+        const daySeconds = daySessions.reduce(
+          (acc, s) => acc + (s.duration_seconds || 0),
+          0,
+        );
+        daily_stats.push({
+          date: dStr,
+          focus_minutes: Math.round(daySeconds / 60),
+          sessions_count: daySessions.length,
+        });
+      }
+
+      return {
+        total_focus_minutes,
+        today_focus_minutes,
+        total_sessions: sessions.length,
+        daily_stats,
+      };
+    }
+  },
 
   // Student Routines (Timetable)
-  getRoutines: () => 
-    request<StudentRoutine[]>("/routines"),
-  
-  createRoutine: (data: { title: string; start_time: string; end_time: string; category: string; scheduled_date?: string | null }) => 
-    request<StudentRoutine>("/routines", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+  getRoutines: async (): Promise<StudentRoutine[]> => {
+    try {
+      const data = await request<StudentRoutine[]>("/routines");
+      setLocal("streakflow_routines", data);
+      return data;
+    } catch {
+      return getLocal<StudentRoutine[]>("streakflow_routines", []);
+    }
+  },
 
-  updateRoutine: (id: number, data: { title?: string; start_time?: string; end_time?: string; category?: string; scheduled_date?: string | null; is_completed_today?: boolean }) =>
-    request<StudentRoutine>(`/routines/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    }),
+  createRoutine: async (data: {
+    title: string;
+    start_time: string;
+    end_time: string;
+    category: string;
+    scheduled_date?: string | null;
+  }): Promise<StudentRoutine> => {
+    try {
+      const item = await request<StudentRoutine>("/routines", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      const local = getLocal<StudentRoutine[]>("streakflow_routines", []);
+      setLocal("streakflow_routines", [...local, item]);
+      return item;
+    } catch {
+      const local = getLocal<StudentRoutine[]>("streakflow_routines", []);
+      const newItem: StudentRoutine = {
+        id: Date.now(),
+        title: data.title,
+        start_time: data.start_time,
+        end_time: data.end_time,
+        category: data.category,
+        scheduled_date: data.scheduled_date || null,
+        is_completed_today: false,
+        created_at: new Date().toISOString(),
+      };
+      setLocal("streakflow_routines", [...local, newItem]);
+      return newItem;
+    }
+  },
 
-  deleteRoutine: (id: number) =>
-    request<void>(`/routines/${id}`, { method: "DELETE" }),
-  
-  toggleRoutine: (id: number) => 
-    request<StudentRoutine>(`/routines/${id}/toggle`, { method: "PATCH" }),
+  updateRoutine: async (
+    id: number,
+    data: {
+      title?: string;
+      start_time?: string;
+      end_time?: string;
+      category?: string;
+      scheduled_date?: string | null;
+      is_completed_today?: boolean;
+    },
+  ): Promise<StudentRoutine> => {
+    try {
+      const item = await request<StudentRoutine>(`/routines/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
+      const local = getLocal<StudentRoutine[]>("streakflow_routines", []);
+      setLocal(
+        "streakflow_routines",
+        local.map((r) => (r.id === id ? item : r)),
+      );
+      return item;
+    } catch {
+      const local = getLocal<StudentRoutine[]>("streakflow_routines", []);
+      const existing = local.find((r) => r.id === id);
+      const updated: StudentRoutine = existing
+        ? { ...existing, ...data }
+        : ({
+            id,
+            title: data.title || "",
+            start_time: data.start_time || "09:00",
+            end_time: data.end_time || "10:00",
+            category: data.category || "DSA",
+            scheduled_date: data.scheduled_date || null,
+            is_completed_today: Boolean(data.is_completed_today),
+            created_at: new Date().toISOString(),
+          } as StudentRoutine);
+      setLocal(
+        "streakflow_routines",
+        local.map((r) => (r.id === id ? updated : r)),
+      );
+      return updated;
+    }
+  },
+
+  deleteRoutine: async (id: number): Promise<void> => {
+    try {
+      await request<void>(`/routines/${id}`, { method: "DELETE" });
+    } catch {}
+    const local = getLocal<StudentRoutine[]>("streakflow_routines", []);
+    setLocal(
+      "streakflow_routines",
+      local.filter((r) => r.id !== id),
+    );
+  },
+
+  toggleRoutine: async (id: number): Promise<StudentRoutine> => {
+    try {
+      const item = await request<StudentRoutine>(`/routines/${id}/toggle`, {
+        method: "PATCH",
+      });
+      const local = getLocal<StudentRoutine[]>("streakflow_routines", []);
+      setLocal(
+        "streakflow_routines",
+        local.map((r) => (r.id === id ? item : r)),
+      );
+      return item;
+    } catch {
+      const local = getLocal<StudentRoutine[]>("streakflow_routines", []);
+      const item = local.find((r) => r.id === id);
+      if (item) {
+        item.is_completed_today = !item.is_completed_today;
+        setLocal("streakflow_routines", local);
+
+        const stats = getLocal<UserStats>("streakflow_user_stats", {
+          id: 1,
+          xp: 100,
+          level: 1,
+          current_streak_days: 1,
+          longest_streak_days: 1,
+          last_active_date: new Date().toISOString().slice(0, 10),
+        });
+        const deltaXP = item.is_completed_today ? 40 : -40;
+        stats.xp = Math.max(0, stats.xp + deltaXP);
+        stats.level = Math.floor(stats.xp / 300) + 1;
+        setLocal("streakflow_user_stats", stats);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("streakflow-stats-updated"));
+        }
+        return item;
+      }
+      throw new Error("Routine not found");
+    }
+  },
 
   // User Stats & XP
-  getUserStats: () => 
-    request<UserStats>("/user/stats"),
+  getUserStats: async (): Promise<UserStats> => {
+    try {
+      const data = await request<UserStats>("/user/stats");
+      setLocal("streakflow_user_stats", data);
+      return data;
+    } catch {
+      return getLocal<UserStats>("streakflow_user_stats", {
+        id: 1,
+        xp: 150,
+        level: 1,
+        current_streak_days: 1,
+        longest_streak_days: 1,
+        last_active_date: new Date().toISOString().slice(0, 10),
+      });
+    }
+  },
 
   // Danger Zone / Reset
-  resetAllData: () =>
-    request<{ status: string; message: string }>("/settings/reset-all-data", {
-      method: "POST",
-    }),
+  resetAllData: async (): Promise<{ status: string; message: string }> => {
+    if (typeof window !== "undefined") {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("streakflow_")) {
+          // Preserve theme choice, wipe all user data and counters
+          if (
+            key !== "streakflow_theme_mode" &&
+            key !== "streakflow_accent_color"
+          ) {
+            keysToRemove.push(key);
+          }
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+
+      // Reset user stats to blank Level 1
+      const freshStats: UserStats = {
+        id: 1,
+        xp: 0,
+        level: 1,
+        current_streak_days: 0,
+        longest_streak_days: 0,
+        last_active_date: new Date().toISOString().slice(0, 10),
+      };
+      setLocal("streakflow_user_stats", freshStats);
+
+      // Dispatch events across app
+      window.dispatchEvent(new Event("streakflow-data-reset"));
+      window.dispatchEvent(new Event("streakflow-stats-updated"));
+      window.dispatchEvent(new Event("focus-session-completed"));
+    }
+    return { status: "success", message: "All user data reset successfully" };
+  },
 };

@@ -1,6 +1,6 @@
 {
-  "name": "GowithFlow",
-  "short_name": "GowithFlow",
+  "name": "Go with Flow",
+  "short_name": "Go with Flow",
   "description": "Daily task manager, DSA streak tracker, and life dashboard",
   "start_url": "/",
   "display": "standalone",

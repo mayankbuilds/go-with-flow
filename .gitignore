@@ -2,7 +2,8 @@
 backend/venv/
 backend/__pycache__/
 *.pyc
-.env
+.env*
+.env*.local
 
 # Node
 frontend/node_modules/
@@ -13,3 +14,5 @@ frontend/out/
 .DS_Store
 .vscode/
 .idea/
+AGENTS.md
+CLAUDE.md

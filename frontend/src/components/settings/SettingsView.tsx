@@ -12,9 +12,23 @@ import {
   Sliders,
   Code2,
   ShieldAlert,
+  Volume2,
+  VolumeX,
+  Timer,
+  Palette,
+  CheckCircle2,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { driveSync } from "@/lib/driveSync";
 import { api } from "@/lib/api";
+import {
+  applyTheme,
+  getInitialTheme,
+  ACCENT_PALETTES,
+  ThemeMode,
+  AccentColor,
+} from "@/lib/theme";
 
 interface SettingsViewProps {
   onResetComplete?: () => Promise<void>;
@@ -25,6 +39,8 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
   const [syncing, setSyncing] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+
   // Danger Zone State
   const [confirmText, setConfirmText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
@@ -34,21 +50,168 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
   const REQUIRED_CONFIRM_PHRASE = "DELETE ALL MY DATA";
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedSync = localStorage.getItem("streakflow_drive_last_sync");
+      if (savedSync) setLastSyncedAt(savedSync);
+      setIsSignedIn(driveSync.isAuthenticated());
+    }
+
     const checkGoogle = setInterval(() => {
       if (typeof window !== "undefined" && window.google) {
         driveSync.initTokenClient(() => {
           setIsSignedIn(true);
           setStatusMsg("Authenticated with Google Drive.");
+          if (localStorage.getItem("streakflow_drive_autosync") === "true") {
+            driveSync.triggerAutoSync().then((ok) => {
+              if (ok) {
+                const now = new Date().toISOString();
+                setLastSyncedAt(now);
+                setStatusMsg("Auto-sync: Backup updated to Google Drive.");
+              }
+            });
+          }
         });
         clearInterval(checkGoogle);
       }
     }, 300);
 
-    return () => clearInterval(checkGoogle);
+    const handleDriveSynced = (e: any) => {
+      setLastSyncedAt(e.detail?.timestamp || new Date().toISOString());
+    };
+    window.addEventListener("streakflow-drive-synced", handleDriveSynced);
+
+    return () => {
+      clearInterval(checkGoogle);
+      window.removeEventListener("streakflow-drive-synced", handleDriveSynced);
+    };
   }, []);
 
   const handleLogin = () => {
     driveSync.requestLogin();
+  };
+
+  // Preferences State
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [defaultDuration, setDefaultDuration] = useState("25");
+  const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
+  const [accentTheme, setAccentTheme] = useState<AccentColor>("emerald");
+  const [driveAutoSync, setDriveAutoSync] = useState(false);
+  const [prefLcHandle, setPrefLcHandle] = useState("");
+  const [prefCfHandle, setPrefCfHandle] = useState("");
+  const [handlesSaved, setHandlesSaved] = useState(false);
+
+  // Load preferences from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const init = getInitialTheme();
+      setThemeMode(init.mode);
+      setAccentTheme(init.accent);
+
+      const soundVal = localStorage.getItem("streakflow_sound_enabled");
+      if (soundVal !== null) setSoundEnabled(soundVal === "true");
+
+      const durVal = localStorage.getItem("streakflow_focus_duration");
+      if (durVal) setDefaultDuration(durVal);
+
+      const themeVal = localStorage.getItem("streakflow_accent_color");
+      if (themeVal) setAccentTheme(themeVal as AccentColor);
+
+      const autoSyncVal = localStorage.getItem("streakflow_drive_autosync");
+      if (autoSyncVal !== null) setDriveAutoSync(autoSyncVal === "true");
+
+      const savedLc = localStorage.getItem("streakflow_lc_handle");
+      if (savedLc) setPrefLcHandle(savedLc);
+
+      const savedCf = localStorage.getItem("streakflow_cf_handle");
+      if (savedCf) setPrefCfHandle(savedCf);
+    }
+  }, []);
+
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("streakflow_sound_enabled", String(next));
+    }
+    if (next && typeof window !== "undefined") {
+      try {
+        const AudioCtx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext })
+            .webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+          gain.gain.setValueAtTime(0.2, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+          osc.start(ctx.currentTime);
+          osc.stop(ctx.currentTime + 0.3);
+        }
+      } catch {}
+    }
+  };
+
+  const handleSelectDuration = (mins: string) => {
+    setDefaultDuration(mins);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("streakflow_focus_duration", mins);
+    }
+  };
+
+  const handleSelectAccent = (accent: AccentColor) => {
+    setAccentTheme(accent);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("streakflow_accent_color", accent);
+    }
+    applyTheme(themeMode, accent);
+  };
+
+  const handleSelectThemeMode = (mode: ThemeMode) => {
+    setThemeMode(mode);
+    applyTheme(mode, accentTheme);
+  };
+
+  const toggleDriveAutoSync = () => {
+    const next = !driveAutoSync;
+    setDriveAutoSync(next);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("streakflow_drive_autosync", String(next));
+    }
+    if (next) {
+      if (driveSync.isAuthenticated()) {
+        driveSync.triggerAutoSync().then((ok) => {
+          if (ok) {
+            const now = new Date().toISOString();
+            setLastSyncedAt(now);
+            setStatusMsg(
+              "Auto-sync active: Initial snapshot synced to Google Drive.",
+            );
+          }
+        });
+      } else {
+        setStatusMsg(
+          "Auto-sync enabled. Please click 'Connect Google Drive' above to authorize.",
+        );
+      }
+    } else {
+      setStatusMsg("Auto-sync disabled. Manual backups only.");
+    }
+  };
+
+  const handleSaveHandles = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (typeof window !== "undefined") {
+      if (prefLcHandle.trim())
+        localStorage.setItem("streakflow_lc_handle", prefLcHandle.trim());
+      if (prefCfHandle.trim())
+        localStorage.setItem("streakflow_cf_handle", prefCfHandle.trim());
+    }
+    setHandlesSaved(true);
+    setTimeout(() => setHandlesSaved(false), 2500);
   };
 
   const handleSyncToDrive = async () => {
@@ -62,10 +225,30 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
         api.getUserStats(),
       ]);
 
+      let localTasks = [];
+      let localNotes = [];
+      if (typeof window !== "undefined") {
+        try {
+          localTasks = JSON.parse(
+            localStorage.getItem("streakflow_tasks") || "[]",
+          );
+          localNotes = JSON.parse(
+            localStorage.getItem("streakflow_notes") || "[]",
+          );
+        } catch {}
+      }
+
       const payload = {
         synced_at: new Date().toISOString(),
-        version: "2.0.0",
-        data: { logs, focus, routines, stats },
+        version: "2.1.0",
+        data: {
+          logs,
+          focus,
+          routines,
+          stats,
+          tasks: localTasks,
+          notes: localNotes,
+        },
       };
 
       await driveSync.uploadSnapshot(payload);
@@ -89,6 +272,20 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
         setStatusMsg("No existing backup found in Google Drive.");
         return;
       }
+      if (typeof window !== "undefined" && snapshot.data) {
+        if (snapshot.data.tasks) {
+          localStorage.setItem(
+            "streakflow_tasks",
+            JSON.stringify(snapshot.data.tasks),
+          );
+        }
+        if (snapshot.data.notes) {
+          localStorage.setItem(
+            "streakflow_notes",
+            JSON.stringify(snapshot.data.notes),
+          );
+        }
+      }
       setStatusMsg(
         "Data restored from Drive. Please refresh page to reload state.",
       );
@@ -106,22 +303,14 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
     setDeleteError(null);
     try {
       await api.resetAllData();
-      // Clear localStorage
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("streakflow_lc_handle");
-        localStorage.removeItem("streakflow_cf_handle");
-        localStorage.removeItem("streakflow_custom_categories");
-        localStorage.removeItem("streakflow_custom_music_url");
-      }
       setDeleteSuccess(true);
       setConfirmText("");
       if (onResetComplete) {
         await onResetComplete();
-      } else {
-        setTimeout(() => {
-          window.location.reload();
-        }, 1200);
       }
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Reset failed";
       setDeleteError(message);
@@ -210,6 +399,33 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
               </div>
             )}
 
+            {lastSyncedAt && (
+              <div className="text-[11px] text-zinc-400 flex items-center justify-between pt-1 px-1">
+                <span>Last Cloud Snapshot:</span>
+                <span className="text-zinc-300 font-bold">
+                  {new Date(lastSyncedAt).toLocaleDateString()}{" "}
+                  {new Date(lastSyncedAt).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+            )}
+
+            {!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && (
+              <div className="text-[11px] text-amber-400/90 bg-amber-950/30 border border-amber-800/40 p-2.5 rounded-xl">
+                Google OAuth Client ID is not yet configured in{" "}
+                <code className="bg-zinc-900 px-1 py-0.5 rounded text-zinc-300">
+                  .env.local
+                </code>
+                . Set{" "}
+                <code className="bg-zinc-900 px-1 py-0.5 rounded text-zinc-300">
+                  NEXT_PUBLIC_GOOGLE_CLIENT_ID
+                </code>{" "}
+                to enable one-click Drive sync.
+              </div>
+            )}
+
             {statusMsg && (
               <div className="text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-800/60 p-3 rounded-xl flex items-center gap-2">
                 <Check className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -229,34 +445,200 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
           </h3>
         </div>
 
-        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 space-y-3">
+        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 space-y-4 font-mono">
+          {/* Sound Effects Toggle */}
           <div className="flex items-center justify-between text-xs">
             <div>
-              <span className="text-zinc-200 block font-bold">
-                Theme & Style
+              <span className="text-zinc-200 block font-bold flex items-center gap-1.5">
+                {soundEnabled ? (
+                  <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <VolumeX className="w-3.5 h-3.5 text-zinc-500" />
+                )}
+                Synthesizer Sound Effects
               </span>
-              <span className="text-[11px] text-zinc-500">
-                Dark Hacker Terminal Aesthetic
+              <span className="text-[11px] text-zinc-500 mt-0.5 block">
+                Chimes for start, pause, and focus session completions
               </span>
             </div>
-            <span className="text-[10px] px-2.5 py-1 rounded-md bg-zinc-950 border border-zinc-800 text-emerald-400">
-              Active
-            </span>
+            <button
+              onClick={toggleSound}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center gap-1.5 ${
+                soundEnabled
+                  ? "bg-emerald-950/70 border-emerald-700 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]"
+                  : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              {soundEnabled ? "Enabled" : "Muted"}
+            </button>
           </div>
 
-          <div className="flex items-center justify-between text-xs pt-3 border-t border-zinc-800">
+          {/* Default Focus Duration */}
+          <div className="pt-3 border-t border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
             <div>
-              <span className="text-zinc-200 block font-bold">
-                Sound Effects
+              <span className="text-zinc-200 block font-bold flex items-center gap-1.5">
+                <Timer className="w-3.5 h-3.5 text-cyan-400" />
+                Default Sprint Duration
               </span>
-              <span className="text-[11px] text-zinc-500">
-                Synthesizer Chimes for Start, Pause & Pomodoro Completion
+              <span className="text-[11px] text-zinc-500 mt-0.5 block">
+                Standard Pomodoro work block duration
               </span>
             </div>
-            <span className="text-[10px] px-2.5 py-1 rounded-md bg-zinc-950 border border-zinc-800 text-emerald-400">
-              Enabled
-            </span>
+            <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800 self-start sm:self-auto">
+              {[
+                { label: "15m Sprint", val: "15" },
+                { label: "25m Flow", val: "25" },
+                { label: "50m Deep", val: "50" },
+              ].map((d) => (
+                <button
+                  key={d.val}
+                  onClick={() => handleSelectDuration(d.val)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] transition cursor-pointer ${
+                    defaultDuration === d.val
+                      ? "bg-zinc-800 text-cyan-400 font-bold border border-zinc-700"
+                      : "text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* Theme Mode Selection (Dark vs White Mode) */}
+          <div className="pt-3 border-t border-zinc-800 flex items-center justify-between text-xs">
+            <div>
+              <span className="text-zinc-200 block font-bold flex items-center gap-1.5">
+                {themeMode === "dark" ? (
+                  <Moon className="w-3.5 h-3.5 text-cyan-400" />
+                ) : (
+                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                )}
+                Display Mode
+              </span>
+              <span className="text-[11px] text-zinc-500 mt-0.5 block">
+                Choose between cyberpunk dark or clean white mode
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
+              <button
+                type="button"
+                onClick={() => handleSelectThemeMode("dark")}
+                className={`px-3 py-1 rounded-lg text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
+                  themeMode === "dark"
+                    ? "bg-zinc-800 text-white font-bold"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <Moon className="w-3 h-3 text-cyan-400" />
+                Dark
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectThemeMode("light")}
+                className={`px-3 py-1 rounded-lg text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
+                  themeMode === "light"
+                    ? "bg-zinc-800 text-amber-400 font-bold"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <Sun className="w-3 h-3 text-amber-400" />
+                White Mode
+              </button>
+            </div>
+          </div>
+
+          {/* Accent Color Selection */}
+          <div className="pt-3 border-t border-zinc-800 flex items-center justify-between text-xs">
+            <div>
+              <span className="text-zinc-200 block font-bold flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5 text-purple-400" />
+                Aesthetic Accent
+              </span>
+              <span className="text-[11px] text-zinc-500 mt-0.5 block">
+                Terminal glowing highlight accents
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {ACCENT_PALETTES.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => handleSelectAccent(c.id)}
+                  title={c.name}
+                  className={`w-6 h-6 rounded-full ${c.bgClass} transition-all cursor-pointer ${
+                    accentTheme === c.id
+                      ? "ring-2 ring-white scale-110 shadow-lg"
+                      : "opacity-40 hover:opacity-100"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Drive Auto-Sync Toggle */}
+          <div className="pt-3 border-t border-zinc-800 flex items-center justify-between text-xs">
+            <div>
+              <span className="text-zinc-200 block font-bold flex items-center gap-1.5">
+                <Cloud className="w-3.5 h-3.5 text-blue-400" />
+                Drive Snapshot Auto-Sync
+              </span>
+              <span className="text-[11px] text-zinc-500 mt-0.5 block">
+                Automatically backup snapshot to Google Drive upon session
+                completion
+              </span>
+            </div>
+            <button
+              onClick={toggleDriveAutoSync}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                driveAutoSync
+                  ? "bg-blue-950/70 border-blue-700 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]"
+                  : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              {driveAutoSync ? "Auto-Sync On" : "Manual Only"}
+            </button>
+          </div>
+
+          {/* Default CP Handles Manager */}
+          <form
+            onSubmit={handleSaveHandles}
+            className="pt-3 border-t border-zinc-800 space-y-2.5"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-200 block font-bold flex items-center gap-1.5 text-xs">
+                <Code2 className="w-3.5 h-3.5 text-emerald-400" />
+                Default Competitive Handles
+              </span>
+              {handlesSaved && (
+                <span className="text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-2 py-0.5 rounded flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Handles Saved!
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <input
+                type="text"
+                placeholder="LeetCode username (e.g. neal_wu)"
+                value={prefLcHandle}
+                onChange={(e) => setPrefLcHandle(e.target.value)}
+                className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-zinc-200 text-xs outline-none focus:border-amber-500"
+              />
+              <input
+                type="text"
+                placeholder="Codeforces handle (e.g. tourist)"
+                value={prefCfHandle}
+                onChange={(e) => setPrefCfHandle(e.target.value)}
+                className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-zinc-200 text-xs outline-none focus:border-blue-500"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-xl text-xs font-bold transition cursor-pointer"
+            >
+              Save Default Handles
+            </button>
+          </form>
         </div>
       </div>
 

@@ -22,19 +22,21 @@ export default function DailyFocusCard({
   const [inputValue, setInputValue] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim()) return;
 
     setLoading(true);
+    setError(null);
     try {
       await onSave(slotNumber, inputValue);
       setInputValue("");
       setIsEditing(false);
     } catch (err) {
       console.error("Save failed:", err);
-      alert("Failed to save task. Ensure backend is running on port 8000.");
+      setError("Failed to save task. Ensure backend is reachable.");
     } finally {
       setLoading(false);
     }
@@ -66,8 +68,8 @@ export default function DailyFocusCard({
         item?.is_completed
           ? "bg-zinc-950/40 border-emerald-900/50 text-zinc-500"
           : item
-          ? "bg-zinc-900/90 border-zinc-700/80 text-zinc-100 shadow-sm"
-          : "bg-zinc-950/40 border-dashed border-zinc-800 text-zinc-500 hover:border-zinc-700"
+            ? "bg-zinc-900/90 border-zinc-700/80 text-zinc-100 shadow-sm"
+            : "bg-zinc-950/40 border-dashed border-zinc-800 text-zinc-500 hover:border-zinc-700"
       }`}
     >
       <div className="flex items-center gap-3">
@@ -81,7 +83,9 @@ export default function DailyFocusCard({
           <div className="flex-1 flex items-center justify-between min-w-0 gap-2">
             <span
               className={`text-xs font-mono font-medium truncate ${
-                item.is_completed ? "line-through text-zinc-500" : "text-zinc-200"
+                item.is_completed
+                  ? "line-through text-zinc-500"
+                  : "text-zinc-200"
               }`}
             >
               {item.title}
@@ -131,7 +135,10 @@ export default function DailyFocusCard({
           </div>
         ) : (
           /* Empty Slot Input Form */
-          <form onSubmit={handleSubmit} className="flex-1 flex items-center gap-2">
+          <form
+            onSubmit={handleSubmit}
+            className="flex-1 flex items-center gap-2"
+          >
             <input
               type="text"
               placeholder={`Lock in Priority #${slotNumber}...`}
@@ -168,6 +175,11 @@ export default function DailyFocusCard({
           </form>
         )}
       </div>
+      {error && (
+        <p className="text-[10px] text-rose-400 mt-1.5 pl-8 font-mono">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
