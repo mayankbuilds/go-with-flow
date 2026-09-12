@@ -1,14 +1,14 @@
-# Python
-backend/venv/
-backend/__pycache__/
-*.pyc
+# Node
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Env
 .env*
 .env*.local
-
-# Node
-frontend/node_modules/
-frontend/.next/
-frontend/out/
 
 # OS / Editor
 .DS_Store
