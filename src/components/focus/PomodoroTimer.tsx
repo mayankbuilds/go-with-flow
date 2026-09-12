@@ -12,10 +12,8 @@ import {
   Flame,
   Music,
   X,
-  CheckCircle2,
   Sliders,
   Radio,
-  Sparkles,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { api } from "@/lib/api";
@@ -911,18 +909,11 @@ export default function PomodoroTimer({
     }
   };
 
-  // Explicit Complete & Log Sprint handler
   // Automatic Sprint Completion handler (Triggered strictly when timer reaches 00:00)
   const handleLogAndCompleteSprint = (customMins?: number) => {
     setIsRunning(false);
     playEndChime();
 
-    const plannedSeconds = getModeTime(mode);
-    const secondsWorked = plannedSeconds - timeLeft;
-    const minutesToRecord =
-      customMins !== undefined
-        ? customMins
-        : Math.max(1, Math.round(secondsWorked / 60));
     if (mode === "focus") {
       const minutesToRecord =
         customMins !== undefined
@@ -947,43 +938,20 @@ export default function PomodoroTimer({
           }
         })
         .catch(() => {});
-      // Log to API & Local storage
-      api
-        .logFocusSession({
-          duration_seconds: minutesToRecord * 60,
-          session_type: "focus",
-          xp_earned: minutesToRecord >= 25 ? 50 : 25,
-        })
-        .then(() => {
-          // Broadcast custom event so Statistics immediately updates
-          if (typeof window !== "undefined") {
-            window.dispatchEvent(
-              new CustomEvent("focus-session-completed", {
-                detail: { minutes: minutesToRecord },
-              }),
-            );
-          }
-        })
-        .catch(() => {});
 
       confetti({ particleCount: 70, spread: 70, origin: { y: 0.6 } });
       setCompletedSessions((prev) => prev + 1);
-      confetti({ particleCount: 70, spread: 70, origin: { y: 0.6 } });
-      setCompletedSessions((prev) => prev + 1);
 
-      if (onSessionComplete) onSessionComplete();
       if (onSessionComplete) onSessionComplete();
     }
 
-    // Reset to break or next sprint
     // Advance to next cycle
     const nextMode: TimerMode =
-      (completedSessions + 1) % 4 === 0 ? "long_break" : "short_break";
-    mode === "focus"
-      ? (completedSessions + 1) % 4 === 0
-        ? "long_break"
-        : "short_break"
-      : "focus";
+      mode === "focus"
+        ? (completedSessions + 1) % 4 === 0
+          ? "long_break"
+          : "short_break"
+        : "focus";
     setMode(nextMode);
     setTimeLeft(getModeTime(nextMode));
   };
@@ -999,6 +967,7 @@ export default function PomodoroTimer({
       handleLogAndCompleteSprint(customFocusMins);
     }
     return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRunning, timeLeft, customFocusMins, mode, completedSessions]);
 
   const formatTime = (seconds: number) => {
@@ -1051,6 +1020,7 @@ export default function PomodoroTimer({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFullscreen, toggleFullscreen, exitFullscreen, mode, isRunning]);
 
   const handleApplyCustomMinutes = (e: React.FormEvent) => {

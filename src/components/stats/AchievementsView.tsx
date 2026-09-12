@@ -252,6 +252,7 @@ export default function AchievementsView({
         handleHandlesUpdated,
       );
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSyncLeetCode = async (e: React.FormEvent) => {
@@ -353,7 +354,8 @@ export default function AchievementsView({
   };
 
   // Expanded 15 Badges & Milestones
-  const badges: BadgeItem[] = [
+  const badges: BadgeItem[] = useMemo(
+    () => [
     {
       id: "first_blood",
       title: "First Blood",
@@ -512,7 +514,7 @@ export default function AchievementsView({
       tier: "Silver",
       category: "Special",
     },
-  ];
+  ], [totalSolved, streak, focusStats, level, lcResult, codingAnalytics]);
 
   // Compute Logged Problems Breakdown (from user's timetable/arena logs)
   const loggedTotal = codingAnalytics?.total_solved ?? totalSolved;

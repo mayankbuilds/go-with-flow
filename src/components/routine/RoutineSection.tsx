@@ -9,13 +9,10 @@ import {
   Edit3,
   Trash2,
   X,
-  Check,
   Calendar,
   ArrowUpDown,
   Tag,
-  Settings2,
   CalendarDays,
-  Flame,
 } from "lucide-react";
 import { StudentRoutine } from "@/types";
 import CalendarPicker from "@/components/ui/CalendarPicker";

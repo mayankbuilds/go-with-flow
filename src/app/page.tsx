@@ -8,9 +8,6 @@ import {
   CheckSquare,
   Award,
   Settings as SettingsIcon,
-  Clock,
-  FileText,
-  Layers,
 } from "lucide-react";
 import Header from "@/components/navigation/Header";
 import MobileNav, { NavTab } from "@/components/navigation/MobileNav";
@@ -35,9 +32,6 @@ import {
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<NavTab>("arena");
-  const [tasksSubView, setTasksSubView] = useState<
-    "all" | "timetable" | "backlog"
-  >("all");
   const [stats, setStats] = useState<UserStats | null>(null);
   const [heatmapData, setHeatmapData] = useState<HeatmapDay[]>([]);
   const [recentLogs, setRecentLogs] = useState<CodingLog[]>([]);

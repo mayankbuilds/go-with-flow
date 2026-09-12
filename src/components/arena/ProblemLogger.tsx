@@ -16,7 +16,7 @@ export default function ProblemLogger({ onLog }: ProblemLoggerProps) {
   const [title, setTitle] = useState("");
   const [platform, setPlatform] = useState("LeetCode");
   const [difficulty, setDifficulty] = useState("Medium");
-  const [topicTag, setTopicTag] = useState("DSA");
+  const topicTag = "DSA";
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {

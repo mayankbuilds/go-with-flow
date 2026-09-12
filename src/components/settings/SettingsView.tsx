@@ -17,8 +17,6 @@ import {
   Timer,
   Palette,
   CheckCircle2,
-  Sun,
-  Moon,
   Loader2,
 } from "lucide-react";
 import { driveSync } from "@/lib/driveSync";
