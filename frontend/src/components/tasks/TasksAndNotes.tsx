@@ -407,7 +407,7 @@ export default function TasksAndNotes({
           {/* Task List Items */}
           {filteredTasks.length === 0 ? (
             <div className="text-center py-12 bg-zinc-900/20 border border-zinc-800/60 rounded-2xl text-zinc-500 text-xs">
-              No tasks found in this view. Click "Add Task" to create one!
+              No tasks found in this view. Click &quot;Add Task&quot; to create one!
             </div>
           ) : (
             <div className="space-y-2 max-h-[540px] overflow-y-auto scrollbar-none pr-1">
@@ -570,7 +570,7 @@ export default function TasksAndNotes({
           {/* Notes Grid */}
           {filteredNotes.length === 0 ? (
             <div className="text-center py-12 bg-zinc-900/20 border border-zinc-800/60 rounded-2xl text-zinc-500 text-xs">
-              No notes found. Click "New Note" to jot down code, ideas, or study
+              No notes found. Click &quot;New Note&quot; to jot down code, ideas, or study
               links!
             </div>
           ) : (

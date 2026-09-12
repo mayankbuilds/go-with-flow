@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import confetti from "canvas-confetti";
 import {
   Terminal,
@@ -8,6 +8,9 @@ import {
   CheckSquare,
   Award,
   Settings as SettingsIcon,
+  Clock,
+  FileText,
+  Layers,
 } from "lucide-react";
 import Header from "@/components/navigation/Header";
 import MobileNav, { NavTab } from "@/components/navigation/MobileNav";
@@ -32,6 +35,9 @@ import {
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<NavTab>("arena");
+  const [tasksSubView, setTasksSubView] = useState<
+    "all" | "timetable" | "backlog"
+  >("all");
   const [stats, setStats] = useState<UserStats | null>(null);
   const [heatmapData, setHeatmapData] = useState<HeatmapDay[]>([]);
   const [recentLogs, setRecentLogs] = useState<CodingLog[]>([]);
@@ -46,6 +52,25 @@ export default function Home() {
       }
     | undefined
   >(undefined);
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      const [s, h, l, f, r] = await Promise.all([
+        api.getUserStats(),
+        api.getHeatmap(365),
+        api.getRecentLogs(10),
+        api.getTodayFocus(),
+        api.getRoutines(),
+      ]);
+      setStats(s);
+      setHeatmapData(h);
+      setRecentLogs(l);
+      setFocusTasks(f);
+      setRoutines(r);
+    } catch (err) {
+      console.error("Dashboard failed to load:", err);
+    }
+  }, []);
 
   useEffect(() => {
     loadDashboard();
@@ -70,7 +95,7 @@ export default function Home() {
       window.removeEventListener("focus-session-completed", onDataChanged);
       window.removeEventListener("streakflow-stats-updated", onDataChanged);
     };
-  }, []);
+  }, [loadDashboard]);
 
   const handleSessionComplete = async () => {
     try {
@@ -78,25 +103,6 @@ export default function Home() {
       setStats(s);
     } catch (err) {
       console.error("Dashboard failed to load stats after pomodoro:", err);
-    }
-  };
-
-  const loadDashboard = async () => {
-    try {
-      const [s, h, l, f, r] = await Promise.all([
-        api.getUserStats(),
-        api.getHeatmap(365),
-        api.getRecentLogs(10),
-        api.getTodayFocus(),
-        api.getRoutines(),
-      ]);
-      setStats(s);
-      setHeatmapData(h);
-      setRecentLogs(l);
-      setFocusTasks(f);
-      setRoutines(r);
-    } catch (err) {
-      console.error("Dashboard failed to load:", err);
     }
   };
 

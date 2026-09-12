@@ -20,9 +20,42 @@ import {
 import confetti from "canvas-confetti";
 import { api } from "@/lib/api";
 
+export interface YouTubePlayer {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  stopVideo: () => void;
+  seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
+  setVolume: (volume: number) => void;
+  getVolume: () => number;
+  mute: () => void;
+  unMute: () => void;
+  loadVideoById?: (videoId: string | { videoId: string; startSeconds?: number }) => void;
+  destroy: () => void;
+  getPlayerState: () => number;
+}
+
+export interface YouTubePlayerOptions {
+  height?: string | number;
+  width?: string | number;
+  videoId?: string;
+  playerVars?: Record<string, unknown>;
+  events?: {
+    onReady?: (event: { target: YouTubePlayer }) => void;
+    onStateChange?: (event: { data: number; target: YouTubePlayer }) => void;
+    onError?: (event: unknown) => void;
+  };
+}
+
+export interface YouTubeNamespace {
+  Player: new (
+    elementId: string | HTMLElement,
+    options: YouTubePlayerOptions
+  ) => YouTubePlayer;
+}
+
 declare global {
   interface Window {
-    YT?: any;
+    YT?: YouTubeNamespace;
     onYouTubeIframeAPIReady?: () => void;
   }
 }
@@ -129,7 +162,7 @@ export default function PomodoroTimer({
   const [audioStatusMsg, setAudioStatusMsg] = useState<string | null>(null);
   const [activeYtId, setActiveYtId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const ytPlayerRef = useRef<any>(null);
+  const ytPlayerRef = useRef<YouTubePlayer | null>(null);
   const prevVolumeRef = useRef<number>(0.4);
 
   // Web Audio Context & Nodes for offline sound generator
@@ -575,7 +608,7 @@ export default function PomodoroTimer({
                   : undefined,
             },
             events: {
-              onReady: (event: any) => {
+              onReady: (event: { target: YouTubePlayer }) => {
                 try {
                   event.target.setVolume(Math.round(musicVolume * 100));
                   if (musicVolume === 0) {
@@ -586,7 +619,7 @@ export default function PomodoroTimer({
                   event.target.playVideo();
                 } catch {}
               },
-              onStateChange: (event: any) => {
+              onStateChange: (event: { data: number; target: YouTubePlayer }) => {
                 // 0 = YT.PlayerState.ENDED: Immediately loop without stopping
                 if (event.data === 0) {
                   try {
@@ -599,7 +632,7 @@ export default function PomodoroTimer({
                   setAudioStatusMsg(`Streaming YouTube Audio (${videoId})`);
                 }
               },
-              onError: (err: any) => {
+              onError: (err: unknown) => {
                 console.warn("YouTube player error:", err);
                 setAudioStatusMsg("YouTube playback error. Try another video.");
               },
@@ -963,6 +996,23 @@ export default function PomodoroTimer({
     return () => clearInterval(timer);
   }, [isRunning, timeLeft, customFocusMins, mode, completedSessions]);
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const switchMode = (newMode: TimerMode) => {
+    setIsRunning(false);
+    setMode(newMode);
+    setTimeLeft(getModeTime(newMode));
+  };
+
+  const resetTimer = (targetMode: TimerMode = mode) => {
+    setIsRunning(false);
+    setTimeLeft(getModeTime(targetMode));
+  };
+
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -997,23 +1047,6 @@ export default function PomodoroTimer({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isFullscreen, toggleFullscreen, exitFullscreen, mode, isRunning]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  const switchMode = (newMode: TimerMode) => {
-    setIsRunning(false);
-    setMode(newMode);
-    setTimeLeft(getModeTime(newMode));
-  };
-
-  const resetTimer = (targetMode: TimerMode = mode) => {
-    setIsRunning(false);
-    setTimeLeft(getModeTime(targetMode));
-  };
 
   const handleApplyCustomMinutes = (e: React.FormEvent) => {
     e.preventDefault();

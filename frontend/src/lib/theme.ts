@@ -50,6 +50,7 @@ export const ACCENT_PALETTES: AccentConfig[] = [
 ];
 
 export function applyTheme(_mode: ThemeMode = "dark", accent: AccentColor = "emerald") {
+  void _mode;
   if (typeof window === "undefined") return;
 
   const root = document.documentElement;

@@ -24,6 +24,8 @@ export default function FocusSection({
     <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-4 sm:p-5">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-xs font-bold uppercase tracking-wider font-mono text-zinc-300 flex items-center gap-2">
+          <Target className="w-4 h-4 text-orange-400" /> Rule of 3 •
+          Non-Negotiables
           <Target className="w-4 h-4 text-orange-400" /> Rule of 3 • Daily Focus
         </h2>
         {completedCount === 3 ? (

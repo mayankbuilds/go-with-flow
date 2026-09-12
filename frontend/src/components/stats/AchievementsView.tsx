@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import confetti from "canvas-confetti";
 import {
   Award,
@@ -86,6 +86,22 @@ export default function AchievementsView({
     "all" | "unlocked" | "locked"
   >("all");
   const [cachedTodayMins, setCachedTodayMins] = useState(0);
+
+  const loadStatsData = useCallback(async () => {
+    setLoadingAnalytics(true);
+    try {
+      const [f, c] = await Promise.all([
+        api.getFocusStats(7),
+        api.getCodingAnalytics(),
+      ]);
+      setFocusStats(f);
+      setCodingAnalytics(c);
+    } catch (err) {
+      console.error("Failed to load stats analytics:", err);
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  }, []);
 
   // Load saved handles, fetch stats on mount, and trigger background auto-sync
   useEffect(() => {
@@ -211,21 +227,6 @@ export default function AchievementsView({
     };
   }, []);
 
-  const loadStatsData = async () => {
-    setLoadingAnalytics(true);
-    try {
-      const [f, c] = await Promise.all([
-        api.getFocusStats(7),
-        api.getCodingAnalytics(),
-      ]);
-      setFocusStats(f);
-      setCodingAnalytics(c);
-    } catch (err) {
-      console.error("Failed to load stats analytics:", err);
-    } finally {
-      setLoadingAnalytics(false);
-    }
-  };
 
   const handleSyncLeetCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1098,7 +1099,7 @@ export default function AchievementsView({
                 {celebratingBadge.desc}
               </p>
               <p className="text-[11px] text-zinc-500 italic mt-2 bg-zinc-900/50 p-2.5 rounded-xl border border-zinc-800/80">
-                "{celebratingBadge.lore}"
+                &ldquo;{celebratingBadge.lore}&rdquo;
               </p>
             </div>
 
@@ -1257,7 +1258,7 @@ export default function AchievementsView({
                             {b.desc}
                           </p>
                           <p className="text-[10px] text-zinc-500 italic mt-1.5 bg-zinc-950/80 p-1.5 rounded-lg border border-zinc-900">
-                            "{b.lore}"
+                            &ldquo;{b.lore}&rdquo;
                           </p>
                           <div className="flex items-center justify-between mt-2 pt-1 border-t border-zinc-800/60">
                             <span

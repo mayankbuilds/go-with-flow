@@ -75,8 +75,9 @@ export default function SettingsView({ onResetComplete }: SettingsViewProps) {
       }
     }, 300);
 
-    const handleDriveSynced = (e: any) => {
-      setLastSyncedAt(e.detail?.timestamp || new Date().toISOString());
+    const handleDriveSynced = (e: Event) => {
+      const customEvt = e as CustomEvent<{ timestamp?: string }>;
+      setLastSyncedAt(customEvt.detail?.timestamp || new Date().toISOString());
     };
     window.addEventListener("streakflow-drive-synced", handleDriveSynced);
 

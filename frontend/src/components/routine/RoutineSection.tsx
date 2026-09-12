@@ -488,7 +488,7 @@ export default function RoutineSection({
         <div className="space-y-2.5 max-h-[540px] overflow-y-auto scrollbar-none pr-1">
           {dailyRoutines.length === 0 ? (
             <div className="p-8 text-center text-xs text-zinc-600 border border-dashed border-zinc-800 rounded-2xl">
-              No routine blocks added yet. Click "+ Add" to build your execution
+              No routine blocks added yet. Click &quot;+ Add&quot; to build your execution
               timetable!
             </div>
           ) : (
@@ -662,7 +662,7 @@ export default function RoutineSection({
           {upcomingEvents.length === 0 ? (
             <div className="p-8 text-center text-xs text-zinc-600 border border-dashed border-zinc-800 rounded-2xl">
               No dated upcoming events scheduled yet. When adding a routine
-              block, check "Schedule for specific date" to track contests,
+              block, check &quot;Schedule for specific date&quot; to track contests,
               exams, and project milestones!
             </div>
           ) : (

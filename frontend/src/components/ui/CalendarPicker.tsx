@@ -62,12 +62,19 @@ export default function CalendarPicker({
   );
 
   // Sync view when selectedDate changes from outside
-  useEffect(() => {
+  const [prevDateStr, setPrevDateStr] = useState(
+    selectedDate ? selectedDate.toISOString().slice(0, 10) : "",
+  );
+  const currentDateStr = selectedDate
+    ? selectedDate.toISOString().slice(0, 10)
+    : "";
+  if (currentDateStr !== prevDateStr) {
+    setPrevDateStr(currentDateStr);
     if (selectedDate) {
       setCurrentYear(selectedDate.getFullYear());
       setCurrentMonth(selectedDate.getMonth());
     }
-  }, [selectedDate]);
+  }
 
   // Click outside to close
   useEffect(() => {

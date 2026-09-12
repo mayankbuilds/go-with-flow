@@ -1,6 +1,32 @@
+export interface GoogleOAuthTokenResponse {
+  access_token: string;
+  error?: string;
+  expires_in?: number;
+  scope?: string;
+  token_type?: string;
+}
+
+export interface GoogleOAuthTokenClient {
+  requestAccessToken: (options?: { prompt?: string }) => void;
+}
+
+export interface GoogleAccountsOAuth2 {
+  initTokenClient: (config: {
+    client_id: string;
+    scope: string;
+    callback: (resp: GoogleOAuthTokenResponse) => void;
+  }) => GoogleOAuthTokenClient;
+}
+
+export interface GoogleNamespace {
+  accounts: {
+    oauth2: GoogleAccountsOAuth2;
+  };
+}
+
 declare global {
   interface Window {
-    google?: any;
+    google?: GoogleNamespace;
   }
 }
 
@@ -12,8 +38,21 @@ export interface SyncState {
   lastSyncedAt: string | null;
 }
 
+export interface SnapshotPayload {
+  synced_at: string;
+  version: string;
+  data: {
+    logs: unknown[];
+    focus: unknown[];
+    routines: unknown[];
+    stats: unknown;
+    tasks: unknown[];
+    notes: unknown[];
+  };
+}
+
 class GoogleDriveSync {
-  private tokenClient: any = null;
+  private tokenClient: GoogleOAuthTokenClient | null = null;
   private accessToken: string | null = null;
 
   initTokenClient(onSuccess: (token: string) => void) {
@@ -22,7 +61,7 @@ class GoogleDriveSync {
     this.tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "",
       scope: "https://www.googleapis.com/auth/drive.appdata",
-      callback: (resp: any) => {
+      callback: (resp: GoogleOAuthTokenResponse) => {
         if (resp.error) {
           console.error("Auth error:", resp);
           return;
@@ -45,7 +84,9 @@ class GoogleDriveSync {
   private async findBackupFileId(): Promise<string | null> {
     if (!this.accessToken) throw new Error("Not authenticated");
 
-    const query = encodeURIComponent(`name = '${BACKUP_FILENAME}' and 'appDataFolder' in parents and trashed = false`);
+    const query = encodeURIComponent(
+      `name = '${BACKUP_FILENAME}' and 'appDataFolder' in parents and trashed = false`
+    );
     const res = await fetch(
       `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${query}&fields=files(id,name)`,
       {
@@ -61,7 +102,7 @@ class GoogleDriveSync {
   }
 
   // Upload or overwrite backup JSON in appDataFolder
-  async uploadSnapshot(payload: any): Promise<void> {
+  async uploadSnapshot(payload: SnapshotPayload): Promise<void> {
     if (!this.accessToken) throw new Error("Not authenticated");
 
     const existingFileId = await this.findBackupFileId();
@@ -107,7 +148,7 @@ class GoogleDriveSync {
   }
 
   // Restore payload from Google Drive
-  async downloadSnapshot(): Promise<any> {
+  async downloadSnapshot(): Promise<SnapshotPayload | null> {
     if (!this.accessToken) throw new Error("Not authenticated");
 
     const fileId = await this.findBackupFileId();
@@ -120,8 +161,9 @@ class GoogleDriveSync {
       }
     );
 
-    return await res.json();
+    return (await res.json()) as SnapshotPayload;
   }
+
   // Check if active access token is present
   isAuthenticated(): boolean {
     return Boolean(this.accessToken);
@@ -148,7 +190,7 @@ class GoogleDriveSync {
   }
 
   // Collect full snapshot from local state
-  async createSnapshotPayload(): Promise<any> {
+  async createSnapshotPayload(): Promise<SnapshotPayload> {
     let localLogs = [];
     let localFocus = [];
     let localRoutines = [];
@@ -159,7 +201,9 @@ class GoogleDriveSync {
     if (typeof window !== "undefined") {
       try {
         localLogs = JSON.parse(localStorage.getItem("streakflow_logs") || "[]");
-        localFocus = JSON.parse(localStorage.getItem("streakflow_focus") || "[]");
+        localFocus = JSON.parse(
+          localStorage.getItem("streakflow_focus") || "[]"
+        );
         localRoutines = JSON.parse(
           localStorage.getItem("streakflow_routines") || "[]"
         );
@@ -216,7 +260,7 @@ class GoogleDriveSync {
   }
 
   // Debounced auto-sync scheduler
-  private autoSyncTimer: any = null;
+  private autoSyncTimer: NodeJS.Timeout | null = null;
   scheduleAutoSync(delayMs: number = 3000) {
     if (this.autoSyncTimer) clearTimeout(this.autoSyncTimer);
     this.autoSyncTimer = setTimeout(() => {
