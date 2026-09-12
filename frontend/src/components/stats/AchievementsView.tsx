@@ -90,7 +90,9 @@ export default function AchievementsView({
   const [cfError, setCfError] = useState<string | null>(null);
 
   // Breakdown View Mode: "logged" (Arena Logs) vs "profiles" (Live Profiles)
-  const [breakdownView, setBreakdownView] = useState<"logged" | "profiles">("logged");
+  const [breakdownView, setBreakdownView] = useState<"logged" | "profiles">(
+    "logged",
+  );
 
   // Badge Celebration Modal State
   const [celebratingBadge, setCelebratingBadge] = useState<BadgeItem | null>(
@@ -1094,7 +1096,8 @@ export default function AchievementsView({
                     Difficulty Tiers (Logged Problems)
                   </span>
                   <span className="text-[10px] text-zinc-500 font-mono">
-                    {loggedDifficulties.reduce((a, c) => a + c.count, 0)} classified
+                    {loggedDifficulties.reduce((a, c) => a + c.count, 0)}{" "}
+                    classified
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
@@ -1163,7 +1166,8 @@ export default function AchievementsView({
                   <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono">
                     <span>{profilePlatforms.leetcode.pct}% of profiles</span>
                     <span className="text-zinc-400 truncate max-w-[90px]">
-                      {lcResult?.rank || (lcUsername ? `@${lcUsername}` : "Not synced")}
+                      {lcResult?.rank ||
+                        (lcUsername ? `@${lcUsername}` : "Not synced")}
                     </span>
                   </div>
                 </div>
@@ -1188,7 +1192,11 @@ export default function AchievementsView({
                   <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono">
                     <span>{profilePlatforms.codeforces.pct}% of profiles</span>
                     <span className="text-zinc-400 truncate max-w-[90px]">
-                      {cfResult?.rating ? `Rating ${cfResult.rating}` : (cfHandle ? `@${cfHandle}` : "Not synced")}
+                      {cfResult?.rating
+                        ? `Rating ${cfResult.rating}`
+                        : cfHandle
+                          ? `@${cfHandle}`
+                          : "Not synced"}
                     </span>
                   </div>
                 </div>
@@ -1201,7 +1209,8 @@ export default function AchievementsView({
                     Difficulty Tiers (Combined Profiles)
                   </span>
                   <span className="text-[10px] text-zinc-500 font-mono">
-                    {profileDifficulties.reduce((a, c) => a + c.count, 0)} total solved
+                    {profileDifficulties.reduce((a, c) => a + c.count, 0)} total
+                    solved
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
