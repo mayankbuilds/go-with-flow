@@ -1,15 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Edit3,
-  Trash2,
-  List,
-  Search,
-  X,
-  Check,
-  Code2,
-} from "lucide-react";
+import { Edit3, Trash2, List, Search, X, Check, Code2 } from "lucide-react";
 import { CodingLog } from "@/types";
 import { api } from "@/lib/api";
 
